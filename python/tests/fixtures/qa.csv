@@ -1,0 +1,5 @@
+question,answer
+What is a learning rate?,The step size the optimizer takes when updating weights.
+Why use gradient checkpointing?,It recomputes activations during the backward pass to save memory.
+What is warmup?,A short phase at the start of training where the learning rate ramps up gradually.
+What does LoRA rank control?,The size of the low-rank adapter matrices injected into the model.

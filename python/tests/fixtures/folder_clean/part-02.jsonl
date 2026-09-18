@@ -1,0 +1,6 @@
+{"instruction": "When should LoRA rank be increased?", "output": "When the task is far from the base model's behaviour and the dataset is large enough to support it."}
+{"instruction": "What does lora_alpha scale?", "output": "The magnitude of the adapter update relative to the frozen base weights."}
+{"instruction": "Why can QLoRA be slower than LoRA?", "output": "It dequantises weights on every forward pass, trading compute for memory."}
+{"instruction": "What is gradient checkpointing in one line?", "output": "Recompute activations during the backward pass instead of storing them, saving memory at the cost of speed."}
+{"instruction": "Why cap save_total_limit?", "output": "Checkpoints are large; keeping every one fills the disk quickly."}
+{"instruction": "What is the purpose of a seed?", "output": "It makes shuffling and dropout reproducible so runs can be compared fairly."}

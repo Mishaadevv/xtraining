@@ -1,0 +1,5 @@
+{
+  "instruction": "This file is intentionally invalid JSON",
+  "output": "so the validator can report the exact line and column",
+  "extra": [1, 2, 3,
+}

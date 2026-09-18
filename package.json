@@ -1,0 +1,72 @@
+{
+  "name": "zeqouxtraining",
+  "productName": "ZeqouXTraining",
+  "version": "0.1.0",
+  "description": "ZeqouXTraining — desktop workspace for fine-tuning and training AI models",
+  "main": "electron/main.js",
+  "author": "Zeqou <misakolot6@gmail.com>",
+  "license": "PolyForm-Strict-1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc --noEmit && vite build",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test:py": "cd python && python tests/test_backend.py",
+    "smoke": "electron scripts/smoke.js",
+    "verify": "npm run typecheck && npm run test:py && npm run smoke",
+    "py:check": "cd python && python -m zeqouxtraining.cli env-check",
+    "pack": "electron-builder --dir --publish never",
+    "dist": "npm run build && electron-builder --publish never"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^4.5.2",
+    "autoprefixer": "^10.4.21",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  },
+  "build": {
+    "appId": "ai.zeqou.xtraining",
+    "productName": "ZeqouXTraining",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "ico.png",
+      "target": ["nsis", "portable"]
+    },
+    "mac": {
+      "icon": "ico.png",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "linux": {
+      "icon": "ico.png",
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "python/**/*",
+      "ico.png",
+      "package.json"
+    ],
+    "extraResources": [{ "from": "python", "to": "python" }]
+  }
+}
