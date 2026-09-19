@@ -1,7 +1,7 @@
 {
   "name": "zeqouxtraining",
   "productName": "ZeqouXTraining",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ZeqouXTraining — desktop workspace for fine-tuning and training AI models",
   "main": "electron/main.js",
   "author": "Zeqou <misakolot6@gmail.com>",
@@ -46,18 +46,36 @@
     },
     "win": {
       "icon": "ico.png",
-      "target": ["nsis", "portable"]
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "mac": {
       "icon": "ico.png",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
       "icon": "ico.png",
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Development"
     },
     "files": [
@@ -67,6 +85,11 @@
       "ico.png",
       "package.json"
     ],
-    "extraResources": [{ "from": "python", "to": "python" }]
+    "extraResources": [
+      {
+        "from": "python",
+        "to": "python"
+      }
+    ]
   }
 }
