@@ -8,6 +8,7 @@ Part of the [Zeqou ecosystem](https://mishaadevv.github.io/zeqou/).
 
 - Import models from Hugging Face or a local folder, and inspect them before committing
 - Fine-tuning, LoRA, QLoRA and SFT through `transformers` + `peft`
+- **Any model can be fine-tuned**: a Hugging Face repo, someone else's local folder, or a model you trained here — a trained LoRA adapter is merged into its base weights and training continues from there
 - **Train from scratch**: build a small transformer (micro/tiny/small presets or a custom architecture) and train it on your dataset with no base model and no downloads
 - Datasets from JSON, JSONL, CSV, TXT, Parquet, a folder of shards, or the Hugging Face Hub
 - Dataset validation before a run: field mapping, duplicates, empty rows, over-length samples

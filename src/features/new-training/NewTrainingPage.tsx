@@ -335,10 +335,48 @@ export function NewTrainingPage() {
               </div>
             )}
 
+            {models.some((model) => model.trained) ? (
+              <div className="mt-4">
+                <p className="mb-2 flex items-center gap-1.5 text-[12px] font-medium text-[var(--text-2)]">
+                  <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--acc)" }} />
+                  Continue training your own models
+                </p>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {models
+                    .filter((model) => model.trained && model.path)
+                    .map((model) => {
+                      const active = wizard.baseModel === model.path;
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          onClick={() => void wizardSelectModel(model.path as string, null)}
+                          className={cn(
+                            "rounded-[12px] border p-3 text-left transition-colors",
+                            active
+                              ? "border-[var(--acc)] bg-[var(--acc-soft)]"
+                              : "border-[var(--border-soft)] hover:border-[var(--border)] hover:bg-[var(--hover)]",
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[12.5px] font-medium">{model.name}</span>
+                            {active ? <Badge tone="accent">selected</Badge> : null}
+                          </div>
+                          <p className="mt-1 text-[11px] text-[var(--text-3)]">
+                            {model.method?.toUpperCase() ?? "trained"} · loss {model.finalLoss?.toFixed(3) ?? "—"}
+                            {model.adapter ? " · LoRA adapter — it is merged into the weights and a new one is trained on top" : " · full model"}
+                          </p>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-4 border-t border-[var(--border-soft)] pt-3">
               <Field
                 label="Or enter a model source"
-                hint="Hugging Face id (owner/name) or an absolute path to a folder with config.json."
+                hint="Hugging Face id (owner/name), an absolute path to a folder with config.json, or a trained model folder — a LoRA-adapter folder is merged into its base weights and training continues from there."
               >
                 <div className="flex gap-2">
                   <Input

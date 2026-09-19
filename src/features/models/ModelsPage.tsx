@@ -10,6 +10,7 @@ import {
   HardDrive,
   Play,
   Plus,
+  RefreshCw,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -77,6 +78,7 @@ function ModelRow({
               {model.trained ? <Badge tone="accent">trained</Badge> : null}
               {model.kind === "huggingface" && !model.cached ? <Badge tone="info">downloads on use</Badge> : null}
               {model.adapter && model.trained ? <Badge>LoRA adapter</Badge> : null}
+              {model.trained && model.isAdapterFolder ? <Badge tone="info">can be fine-tuned further</Badge> : null}
               {model.trained && !model.adapter ? <Badge>full model</Badge> : null}
             </div>
             <p className="zq-mono mt-0.5 truncate text-[11px] text-[var(--text-3)]" title={model.path ?? model.source}>
@@ -142,6 +144,20 @@ function ModelRow({
             }}
           >
             Use as base model
+          </Button>
+        ) : null}
+        {model.trained && model.path ? (
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<RefreshCw className="h-3.5 w-3.5" />}
+            onClick={() => {
+              resetWizard({ baseModel: model.path as string });
+              void wizardSelectModel(model.path as string, null);
+              navigate("new");
+            }}
+          >
+            Continue training
           </Button>
         ) : null}
         {model.trained && model.path ? (

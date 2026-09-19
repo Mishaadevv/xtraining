@@ -109,8 +109,23 @@ def inspect(source: str, hf_cache_dir: str | None = None) -> dict[str, Any]:
     return _inspect_local(path)
 
 
+def _is_adapter_folder(path: Path) -> bool:
+    """A PEFT adapter folder: adapter_config.json without a full config.json."""
+    return path.is_dir() and (path / "adapter_config.json").is_file() and not (path / "config.json").is_file()
+
+
 def _inspect_local(path: Path) -> dict[str, Any]:
     config = read_config_json(path)
+    adapter_config: dict[str, Any] = {}
+    adapter_base: str | None = None
+    if _is_adapter_folder(path):
+        try:
+            adapter_config = json.loads(
+                (path / "adapter_config.json").read_text(encoding="utf-8", errors="replace")
+            )
+        except Exception:
+            adapter_config = {}
+        adapter_base = str(adapter_config.get("base_model_name_or_path") or "") or None
     weight_files = sorted(
         p for p in path.iterdir() if p.is_file() and p.suffix.lower() in WEIGHT_SUFFIXES
     ) if path.is_dir() else []
@@ -161,6 +176,12 @@ def _inspect_local(path: Path) -> dict[str, Any]:
         params = estimate_params_from_config(config)
         exact = False
 
+    if adapter_base:
+        # Only adapter matrices live here; the real parameter count belongs to
+        # the base model and is reported through adapter_base instead.
+        params = None
+        exact = False
+
     size_bytes = sum(p.stat().st_size for p in weight_files) if weight_files else None
     quantized_detected = any(
         _weird_tensor_skip_line(key) for key in _peek_safetensors_keys(safetensors[:1])
@@ -184,6 +205,11 @@ def _inspect_local(path: Path) -> dict[str, Any]:
     }
 
     issues: list[dict[str, Any]] = []
+    is_adapter = bool(adapter_base)
+    if not config and is_adapter:
+        # Adapter folders carry no config.json by design; the architecture comes
+        # from the base model the adapter was trained on.
+        config = {"model_type": "peft-adapter", "architectures": ["PeftAdapter"]}
     if not config:
         issues.append({
             "severity": "error",
@@ -191,19 +217,26 @@ def _inspect_local(path: Path) -> dict[str, Any]:
             "message": "config.json is missing, so the architecture cannot be determined.",
             "hint": "Point at the folder that contains config.json and the model weights.",
         })
-    if not weight_files:
+    if not weight_files and not is_adapter:
         issues.append({
             "severity": "error",
             "code": "no_weights",
             "message": "No model weights were found in this folder.",
             "hint": "Expected one of: model.safetensors, *.bin, *.gguf.",
         })
-    if not (path / "tokenizer_config.json").is_file() and not (path / "tokenizer.json").is_file():
+    if not (path / "tokenizer_config.json").is_file() and not (path / "tokenizer.json").is_file() and not is_adapter:
         issues.append({
             "severity": "warning",
             "code": "no_tokenizer",
             "message": "No tokenizer files were found locally.",
             "hint": "Training will try to use the base model's tokenizer if one is identifiable.",
+        })
+    if is_adapter:
+        issues.append({
+            "severity": "info",
+            "code": "lora_adapter",
+            "message": f"LoRA adapter on top of '{adapter_base}'.",
+            "hint": "Training on it continues from this adapter: the base model is loaded, the adapter is merged, and a new adapter is trained.",
         })
     if any(p.suffix.lower() == ".gguf" for p in weight_files):
         issues.append({
@@ -226,7 +259,10 @@ def _inspect_local(path: Path) -> dict[str, Any]:
         "weight_files": [p.name for p in weight_files],
         "shard_files": shard_files,
         "quantized_hint": quantized_detected,
-        "trainable": bool(config and weight_files),
+        "adapter": is_adapter,
+        "adapter_base": adapter_base,
+        "adapter_r": int(adapter_config.get("r") or 0) or None if is_adapter else None,
+        "trainable": bool(config and (weight_files or is_adapter)),
         "issues": issues,
         "max_position_embeddings": fields["max_position_embeddings"],
         # fp16/bf16 become available on CUDA regardless of the stored dtype.

@@ -116,7 +116,7 @@ class ScratchBackend(TrainingBackend):
     name = "scratch"
     label = "From scratch (small transformer)"
     methods = ("scratch",)
-    requires = ("torch", "transformers", "accelerate")
+    requires = ("torch", "transformers", "accelerate", "datasets")
 
     def run(self, ctx: RunContext) -> RunResult:
         import torch  # noqa: PLC0415

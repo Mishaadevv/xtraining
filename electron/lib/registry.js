@@ -277,6 +277,10 @@ async function addModel(source, options = {}) {
     addedAt: Date.now(),
     trained: false,
     adapter: false,
+    // Set when the folder is a PEFT adapter (a trained model that can itself
+    // be fine-tuned further): training on it continues from that adapter.
+    isAdapterFolder: Boolean(info.adapter),
+    adapterBase: info.adapter_base || null,
   };
 
   const store = modelsStore();

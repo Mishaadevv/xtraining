@@ -724,6 +724,9 @@ export async function runAutoConfig(): Promise<void> {
 
   setBusy("autoConfig", true);
   try {
+    // Live environment first: the Check step must reflect the interpreter
+    // that will actually run training, not a stale snapshot.
+    await refreshEnv(true);
     const datasetPath = resolveDatasetPath(wizard.datasetId);
     const result = await bridge.training.autoConfig({
       baseModel: wizard.baseModel || undefined,

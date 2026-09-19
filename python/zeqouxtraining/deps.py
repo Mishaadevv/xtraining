@@ -41,13 +41,15 @@ PACKAGES: list[dict[str, str]] = [
 
 # Which packages gate which capability, so the UI can answer
 # "can I run this?" before a run starts instead of failing after loading weights.
+# NOTE: every training path loads datasets via `datasets.Dataset`, and QLoRA
+# needs bitsandbytes — keep these lists in sync with the backend `requires`.
 CAPABILITIES: dict[str, list[str]] = {
-    "lora": ["torch", "transformers", "peft", "accelerate"],
-    "qlora": ["torch", "transformers", "peft", "accelerate", "bitsandbytes"],
-    "sft": ["torch", "transformers", "peft", "accelerate"],
-    "full": ["torch", "transformers", "accelerate"],
+    "lora": ["torch", "transformers", "peft", "accelerate", "datasets"],
+    "qlora": ["torch", "transformers", "peft", "accelerate", "bitsandbytes", "datasets"],
+    "sft": ["torch", "transformers", "peft", "accelerate", "datasets"],
+    "full": ["torch", "transformers", "accelerate", "datasets"],
     # From scratch needs no peft: the model is built in code.
-    "scratch": ["torch", "transformers", "accelerate"],
+    "scratch": ["torch", "transformers", "accelerate", "datasets"],
     "inference": ["torch", "transformers"],
     "hf_datasets": ["datasets"],
     "parquet": ["pyarrow"],
@@ -123,7 +125,13 @@ def install_plan(cuda_tag: str | None = None) -> dict[str, Any]:
 
     args = [sys.executable, "-m", "pip", "install", "--upgrade"]
     if cuda_tag:
-        args += ["torch", "--index-url", f"https://download.pytorch.org/whl/{cuda_tag}"]
+        # Options BEFORE packages: torch must come from the CUDA index, and
+        # everything else must still resolve from PyPI (without --extra-index-url
+        # pip looks for transformers/peft/... ONLY in the CUDA index and fails
+        # with "No matching distribution").
+        args += ["--index-url", f"https://download.pytorch.org/whl/{cuda_tag}",
+                 "--extra-index-url", "https://pypi.org/simple"]
+        args += ["torch"]
         missing = [m for m in missing if m != "torch"]
     args += missing or ["torch", "transformers", "peft", "accelerate", "safetensors"]
 

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,49 @@ def detect_target_modules(model, configured: Any) -> list[str]:
     return unique[:2] or ["q_proj", "v_proj"]
 
 
+def _read_adapter_config(folder: Path) -> dict[str, Any]:
+    """Read adapter_config.json from a PEFT adapter folder."""
+    try:
+        raw = (folder / "adapter_config.json").read_text(encoding="utf-8", errors="replace")
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+def _resolve_base_from_adapter(ctx: RunContext, source: str) -> str:
+    """Resolve the real base model for a PEFT adapter folder.
+
+    Any model trained here as LoRA/QLoRA/SFT is saved as an adapter on top of a
+    base; loading such a folder with AutoModelForCausalLM fails because it has
+    no config.json. When the user points training at a trained model, we load
+    base + adapter, merge the adapter into the weights, and let a fresh adapter
+    train on the result — a real continuation, for any model, not just ones
+    this app created.
+    """
+    folder = Path(source)
+    if not folder.is_dir() or not (folder / "adapter_config.json").is_file():
+        return source
+    adapter_config = _read_adapter_config(folder)
+    base = str(adapter_config.get("base_model_name_or_path") or "").strip()
+    if not base:
+        raise ValueError(
+            f"'{source}' is a LoRA adapter without base_model_name_or_path; "
+            "the base model it was trained on cannot be determined."
+        )
+    if not (Path(base).is_dir() or re.match(r"^[\w.\-]+/[\w.\-]+$", base)):
+        raise ValueError(f"The adapter's base model '{base}' is not a valid model id or folder.")
+    ctx.emit("training-status", {
+        "message": (
+            f"'{folder.name}' is a LoRA adapter on top of '{base}'. Loading the base "
+            "model, merging the adapter into the weights, then attaching a new adapter."
+        ),
+        "phase": "adapter_merge",
+        "adapter_source": str(folder),
+        "resolved_base_model": base,
+    })
+    return base
+
+
 def _supported_kwargs(target, kwargs: dict[str, Any]) -> dict[str, Any]:
     """Drop keyword arguments the installed library version does not accept."""
     import inspect  # noqa: PLC0415
@@ -102,7 +146,27 @@ class HuggingFacePeftBackend(TrainingBackend):
     name = "hf-peft"
     label = "Hugging Face + PEFT"
     methods = ("lora", "qlora", "sft", "full")
-    requires = ("torch", "transformers", "peft", "accelerate")
+    requires = ("torch", "transformers", "peft", "accelerate", "datasets")
+
+    def preflight(self, ctx: RunContext) -> list[dict[str, Any]]:
+        issues = super().preflight(ctx)
+        method = str(ctx.config.get("method") or "").lower()
+        quant = str(ctx.config.get("quantization") or "none").lower()
+        if method == "qlora" or quant in ("4bit", "8bit"):
+            import importlib.util
+
+            try:
+                have_bnb = importlib.util.find_spec("bitsandbytes") is not None
+            except (ImportError, ValueError):
+                have_bnb = False
+            if not have_bnb:
+                issues.append({
+                    "severity": "error",
+                    "code": "backend_unavailable",
+                    "message": "Quantized training needs the bitsandbytes package.",
+                    "hint": "Install the ML runtime in Settings → Environment (quantization checkbox).",
+                })
+        return issues
 
     # ------------------------------------------------------------------ setup
     def _resolve_dtype(self, torch, config: dict[str, Any]) -> Any:
@@ -170,7 +234,9 @@ class HuggingFacePeftBackend(TrainingBackend):
         })
 
         # ---------------------------------------------------------- tokenizer
-        base_model = str(config["base_model"])
+        # A trained model folder may itself be a LoRA adapter (any method except
+        # a full fine-tune). Resolve it to its base and merge before training.
+        base_model = _resolve_base_from_adapter(ctx, str(config["base_model"]))
         ctx.emit("training-status", {"message": f"Loading tokenizer for {base_model}", "phase": "tokenizer"})
         tokenizer = AutoTokenizer.from_pretrained(
             base_model,
@@ -221,6 +287,19 @@ class HuggingFacePeftBackend(TrainingBackend):
         )
         if device == "cpu" and not want_quant:
             model = model.to("cpu")
+
+        # Continue from a previously trained adapter: fold it into the weights so
+        # a new adapter (or a full fine-tune) starts where the last run stopped.
+        trained_dir = str(config["base_model"])
+        if trained_dir != base_model:
+            from peft import PeftModel  # noqa: PLC0415
+
+            ctx.emit("training-status", {
+                "message": f"Merging the trained adapter from {trained_dir}",
+                "phase": "adapter_merge",
+            })
+            model = PeftModel.from_pretrained(model, trained_dir)
+            model = model.merge_and_unload()
 
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total_params = sum(p.numel() for p in model.parameters())

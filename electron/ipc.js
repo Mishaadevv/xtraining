@@ -156,11 +156,16 @@ function register() {
 
   ipcMain.handle("zeqou:settings:reset", wrap(() => {
     store.settings().replace({ ...store.SETTINGS_DEFAULTS });
+    python.setInterpreter(null);
     return ok({ settings: store.settings().get() });
   }));
 
   /* ---------------------------------------------------------- environment */
   ipcMain.handle("zeqou:env:detect", wrap(async (options = {}) => {
+    if (options.force) {
+      await python.resolve(true);
+      await python.discover(true);
+    }
     // Node answers immediately for CPU/RAM; Python adds the CUDA truth.
     const system = hardware.systemSnapshot();
     const smi = await hardware.queryGpus();
@@ -272,9 +277,20 @@ function register() {
   }
 
   ipcMain.handle("zeqou:env:installRuntime", wrap(async () => {
-    if (installChild) {
+    if (installing || installChild) {
       return { ok: false, error: { code: "install_busy", message: "An installation is already running." } };
     }
+    installing = true;
+    try {
+      return await runRuntimeInstall();
+    } finally {
+      installing = false;
+    }
+  }));
+
+  let installing = false;
+
+  async function runRuntimeInstall() {
 
     const send = (payload) => emit("zeqou:runtime:install", payload);
     const base = await pickBaseInterpreter();
@@ -312,6 +328,7 @@ function register() {
     send({ phase: "output", line: cudaTag ? `Installing the ML runtime (CUDA ${cudaTag} wheel index for torch)…` : "Installing the ML runtime (CPU build of torch)…" });
 
     const packages = ["torch", "transformers", "peft", "accelerate", "safetensors", "numpy", "huggingface_hub", "datasets", "pyarrow", "sentencepiece"];
+    if (cudaTag) packages.push("bitsandbytes"); // QLoRA needs it, and it only works on CUDA
     const pipArgs = ["-m", "pip", "install", "--upgrade", ...packages];
     if (cudaTag) pipArgs.push("--index-url", `https://download.pytorch.org/whl/${cudaTag}`, "--extra-index-url", "https://pypi.org/simple");
 
@@ -340,13 +357,26 @@ function register() {
       return { ok: false, error: { code: "pip_failed", message: `pip exited with code ${exitCode}.`, hint: "The full pip log is shown above. The most common cause is a proxy/firewall blocking the download." } };
     }
 
-    // Point the app at the venv so every backend call uses it from now on.
+    // Verify inside the venv before declaring success: pip exit 0 with a
+    // half-broken environment used to report "done" and training failed later
+    // with missing_dependency. Never let that happen again.
+    send({ phase: "output", line: "Verifying the installed packages…" });
     python.setInterpreter(venvPython);
+    const check = await python.run(["env-check"]);
+    const deps = check.result && check.result.dependencies;
+    const missing = deps ? deps.missing_core || [] : null;
+    if (!check.result || (missing && missing.length)) {
+      const names = missing && missing.length ? missing.join(", ") : (check.error && check.error.message) || "unknown";
+      send({ phase: "failed", message: `Installed, but still missing: ${names}.` });
+      return { ok: false, error: { code: "install_incomplete", message: `Installed, but still missing: ${names}.`, hint: "Press Install again to retry the missing packages, or check the pip log above for blocked downloads." } };
+    }
+
+    // Point the app at the venv so every backend call uses it from now on.
     store.settings().merge({ interpreterPath: venvPython });
     send({ phase: "output", line: `Done. The app environment is at ${venvDir}` });
     send({ phase: "done", exitCode: 0, venv: venvDir });
     return ok({ exitCode: 0, venv: venvDir, interpreter: venvPython });
-  }));
+  }
 
   ipcMain.handle("zeqou:env:installStatus", wrap(async () => {
     const venvPython = venvPythonPath(path.join(dirs.root(), "venv"));

@@ -1,7 +1,7 @@
 {
   "name": "zeqouxtraining",
   "productName": "ZeqouXTraining",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "ZeqouXTraining — desktop workspace for fine-tuning and training AI models",
   "main": "electron/main.js",
   "author": "Zeqou <misakolot6@gmail.com>",

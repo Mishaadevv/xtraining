@@ -328,6 +328,10 @@ export interface ModelEntry {
   trainable: boolean;
   trained: boolean;
   adapter: boolean;
+  /** The folder itself is a PEFT adapter (it can be fine-tuned further). */
+  isAdapterFolder?: boolean;
+  /** Base model recorded inside adapter_config.json (for adapter folders). */
+  adapterBase?: string | null;
   method?: string;
   baseModel?: string;
   runId?: string;
