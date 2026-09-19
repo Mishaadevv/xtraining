@@ -22,8 +22,10 @@ def _load_builtin() -> None:
     if "hf-peft" in _REGISTERED:
         return
     from .hf_peft import HuggingFacePeftBackend  # noqa: PLC0415
+    from .scratch import ScratchBackend  # noqa: PLC0415
 
     register(HuggingFacePeftBackend)
+    register(ScratchBackend)
 
 
 def all_backends() -> dict[str, type[TrainingBackend]]:

@@ -124,7 +124,12 @@ def run_job(job_path: str | Path) -> int:
         return EXIT_ERROR
 
     try:
-        model_info = job.get("model_info") or inspect_model(str(config["base_model"]))
+        # From-scratch runs have no base model to inspect; the backend builds
+        # the architecture from the config instead.
+        if config.get("method") == "scratch":
+            model_info = job.get("model_info") or {}
+        else:
+            model_info = job.get("model_info") or inspect_model(str(config["base_model"]))
     except ModelError as exc:
         events.fail(exc.message, hint=exc.hint, code=exc.code)
         return EXIT_ERROR
@@ -134,7 +139,11 @@ def run_job(job_path: str | Path) -> int:
                     traceback_text=info["traceback"])
         return EXIT_ERROR
 
-    backend_name = job.get("backend") or default_backend_name()
+    # The scratch method is implemented by its own backend; route it there
+    # unless the job file already pinned one explicitly.
+    backend_name = job.get("backend") or (
+        "scratch" if config.get("method") == "scratch" else default_backend_name()
+    )
     backend_cls = get_backend(backend_name)
     if backend_cls is None:
         events.fail(

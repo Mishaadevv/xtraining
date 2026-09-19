@@ -46,6 +46,8 @@ CAPABILITIES: dict[str, list[str]] = {
     "qlora": ["torch", "transformers", "peft", "accelerate", "bitsandbytes"],
     "sft": ["torch", "transformers", "peft", "accelerate"],
     "full": ["torch", "transformers", "accelerate"],
+    # From scratch needs no peft: the model is built in code.
+    "scratch": ["torch", "transformers", "accelerate"],
     "inference": ["torch", "transformers"],
     "hf_datasets": ["datasets"],
     "parquet": ["pyarrow"],

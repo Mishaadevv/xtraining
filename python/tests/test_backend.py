@@ -742,6 +742,54 @@ def test_cli_protocol() -> None:
     backend_out = run("backends")
     names = [b["name"] for b in backend_out[-1]["detail"]["backends"]]
     check("the hf-peft backend is registered", "hf-peft" in names, str(names))
+    check("the scratch backend is registered", "scratch" in names, str(names))
+    scratch_cap = [b for b in backend_out[-1]["detail"]["backends"] if b["name"] == "scratch"][0]
+    check("the scratch backend declares only the scratch method",
+          scratch_cap["methods"] == ["scratch"], str(scratch_cap["methods"]))
+
+
+def test_scratch_backend() -> None:
+    """From-scratch training: architecture resolution, validation and routing."""
+    print("\nscratch backend (training from zero)")
+    from zeqouxtraining import config as config_mod
+    from zeqouxtraining.backends.scratch import ScratchBackend, SIZES, resolve_architecture
+
+    arch = resolve_architecture({})
+    check("the default architecture is the tiny preset",
+          arch["layers"] == SIZES["tiny"]["layers"] and arch["hidden"] == SIZES["tiny"]["hidden"],
+          str(arch))
+    custom = resolve_architecture({"scratch_layers": 6, "scratch_hidden": 300, "scratch_heads": 8})
+    check("explicit overrides win and heads are made to divide hidden evenly",
+          custom["layers"] == 6 and custom["hidden"] == 300 and custom["hidden"] % custom["heads"] == 0,
+          str(custom))
+
+    check("scratch is a registered method of its backend", ScratchBackend().methods == ("scratch",))
+
+    # Validation: scratch needs no base model, but other methods still do.
+    base_cfg = config_mod.normalize({"method": "scratch", "dataset": {"path": "x.jsonl"}})
+    issues = config_mod.validate(base_cfg, {"cuda_ready": False})
+    check("a scratch config validates without a base model",
+          not any(i["code"] == "no_base_model" for i in issues),
+          str([i["code"] for i in issues]))
+    lora_cfg = config_mod.normalize({"method": "lora", "dataset": {"path": "x.jsonl"}})
+    issues = config_mod.validate(lora_cfg, {"cuda_ready": False})
+    check("lora still requires a base model",
+          any(i["code"] == "no_base_model" for i in issues),
+          str([i["code"] for i in issues]))
+
+    char_tok = None
+    try:
+        from zeqouxtraining.backends.scratch import _CharTokenizer
+        char_tok = _CharTokenizer(["hello world", "second line"], 5000)
+    except Exception:
+        char_tok = None
+    check("the character tokenizer learns a vocabulary without any download",
+          char_tok is not None and char_tok.vocab_size > 3,
+          f"vocab {char_tok.vocab_size if char_tok else '?'}")
+    if char_tok:
+        encoded = char_tok(["hi"], truncation=True, max_length=8)
+        check("the character tokenizer round-trips through decode",
+              char_tok.decode(encoded["input_ids"][0]) == "hi")
 
     bad = subprocess.run(
         [sys.executable, "-m", "zeqouxtraining.cli", "not-a-command"],
@@ -774,6 +822,7 @@ def main() -> int:
     test_auto_configure_cpu()
     test_vram_estimator()
     test_backend_helpers()
+    test_scratch_backend()
     test_checkpoints()
     test_error_humanizing()
     test_exporter()

@@ -82,7 +82,8 @@ function upsertRun(run) {
 
 async function startRun(request) {
   const config = request.config || {};
-  if (!config.base_model) {
+  // Training from scratch is the one method without a base model.
+  if (!config.base_model && config.method !== "scratch") {
     return { ok: false, error: { code: "no_base_model", message: "Select a base model first." } };
   }
   const datasetPath = config.dataset && config.dataset.path;
@@ -101,13 +102,16 @@ async function startRun(request) {
   const jobPath = path.join(runDir, "job.json");
 
   const software = python.buildEnv();
+  // The scratch method is implemented by its own backend; anything else
+  // defaults to the HF+PEFT engine.
+  const backendName = request.backend || (config.method === "scratch" ? "scratch" : "hf-peft");
   const job = {
     job_id: runId,
     project_id: request.projectId || null,
     run_dir: runDir.replace(/\\/g, "/"),
     stop_file: stopFile.replace(/\\/g, "/"),
     pause_file: pauseFile.replace(/\\/g, "/"),
-    backend: request.backend || "hf-peft",
+    backend: backendName,
     hardware: request.hardware || {},
     model_info: request.modelInfo || {},
     config: {
@@ -123,7 +127,7 @@ async function startRun(request) {
     projectId: request.projectId || null,
     name,
     method: config.method || "lora",
-    baseModel: config.base_model,
+    baseModel: config.base_model || (config.method === "scratch" ? "(from scratch)" : ""),
     datasetName: request.datasetName || (config.dataset && (config.dataset.name || config.dataset.path)) || "",
     datasetPath: datasetPath || hfId || "",
     status: "starting",

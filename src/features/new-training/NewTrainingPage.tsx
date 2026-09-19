@@ -84,6 +84,11 @@ const METHOD_BLURB: Record<Method, { label: string; summary: string; detail: str
     summary: "Update every weight of the base model",
     detail: "Highest capacity and highest cost. Optimizer state alone needs roughly two extra fp32 copies of the model.",
   },
+  scratch: {
+    label: "From scratch",
+    summary: "Train a fresh model from random weights — no base model",
+    detail: "Builds a small transformer and trains it on your dataset only. Nothing is downloaded. Needs much more data than fine-tuning to become good; best for tiny domain models and experiments.",
+  },
 };
 
 function StepNav({ current, onSelect }: { current: number; onSelect: (step: number) => void }) {
@@ -172,7 +177,8 @@ export function NewTrainingPage() {
     }
   };
   const methodAvailable = (method: Method): { ok: boolean; reason?: string } => {
-    const backend = env.backends?.find((entry) => entry.name === "hf-peft");
+    // From scratch runs on its own backend, which needs no peft.
+    const backend = env.backends?.find((entry) => entry.name === (method === "scratch" ? "scratch" : "hf-peft"));
     if (backend && !backend.available) {
       return { ok: false, reason: `Needs: ${backend.missing.join(", ") || "the ML runtime"}. Install it in Settings → Environment.` };
     }
@@ -203,7 +209,8 @@ export function NewTrainingPage() {
         tone: "bad",
       });
     }
-    if (!wizard.baseModel) {
+    // From scratch is the one method with no base model.
+    if (!wizard.baseModel && wizard.method !== "scratch") {
       list.push({ title: "No base model selected", detail: "Pick a model in step 1.", tone: "bad" });
     }
     if (!datasetPath) {
@@ -533,7 +540,7 @@ export function NewTrainingPage() {
               description="Unavailable methods explain exactly what is missing instead of failing later."
             />
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              {(["lora", "qlora", "sft", "full"] as Method[]).map((method) => {
+              {(["lora", "qlora", "sft", "full", "scratch"] as Method[]).map((method) => {
                 const availability = methodAvailable(method);
                 return (
                   <MethodCard
@@ -916,7 +923,7 @@ function ConfigForm({
     { key: "seed", label: "Seed", hint: "Makes shuffling reproducible.", min: 0, max: 1_000_000 },
   ];
 
-  const adapter = config.method !== "full";
+  const adapter = config.method !== "full" && config.method !== "scratch";
 
   return (
     <div className="space-y-4">
@@ -940,6 +947,73 @@ function ConfigForm({
             </Field>
           ))}
       </div>
+
+      {config.method === "scratch" ? (
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-[var(--border-soft)] pt-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Model size" hint="Named presets; every value below can be overridden.">
+            <Select
+              value={config.scratch_size ?? "tiny"}
+              onChange={(event) => onChange({ scratch_size: event.target.value })}
+            >
+              <option value="micro">micro (~3M params)</option>
+              <option value="tiny">tiny (~10M params)</option>
+              <option value="small">small (~25M params)</option>
+            </Select>
+          </Field>
+          <Field label="Layers" hint="Depth of the transformer.">
+            <Input
+              type="number"
+              min={1}
+              max={24}
+              value={String(config.scratch_layers ?? 4)}
+              onChange={(event) => onChange({ scratch_layers: Number.parseInt(event.target.value, 10) || 4 })}
+            />
+          </Field>
+          <Field label="Hidden size" hint="Width of the model; must be divisible by the heads.">
+            <Input
+              type="number"
+              min={32}
+              max={2048}
+              step={32}
+              value={String(config.scratch_hidden ?? 256)}
+              onChange={(event) => onChange({ scratch_hidden: Number.parseInt(event.target.value, 10) || 256 })}
+            />
+          </Field>
+          <Field label="Attention heads" hint="Rounded down to divide the hidden size evenly.">
+            <Input
+              type="number"
+              min={1}
+              max={16}
+              value={String(config.scratch_heads ?? 4)}
+              onChange={(event) => onChange({ scratch_heads: Number.parseInt(event.target.value, 10) || 4 })}
+            />
+          </Field>
+          {!simple ? (
+            <Field label="FFN width" hint="Inner size of the feed-forward blocks.">
+              <Input
+                type="number"
+                min={64}
+                max={8192}
+                step={64}
+                value={String(config.scratch_ffn ?? 1024)}
+                onChange={(event) => onChange({ scratch_ffn: Number.parseInt(event.target.value, 10) || 1024 })}
+              />
+            </Field>
+          ) : null}
+          {!simple ? (
+            <Field label="Vocabulary" hint="Ceiling for the character-level vocabulary learned from the dataset.">
+              <Input
+                type="number"
+                min={1000}
+                max={100000}
+                step={1000}
+                value={String(config.scratch_vocab ?? 16000)}
+                onChange={(event) => onChange({ scratch_vocab: Number.parseInt(event.target.value, 10) || 16000 })}
+              />
+            </Field>
+          ) : null}
+        </div>
+      ) : null}
 
       {adapter ? (
         <div className="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-[var(--border-soft)] pt-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -5,7 +5,7 @@ import { ToastStack } from "@/components/ui/Overlay";
 import { Button, Note } from "@/components/ui/primitives";
 import { isDesktop } from "@/lib/bridge";
 import { useStore } from "@/state/store";
-import { appStore, bootstrap, refreshEnv, subscribeToEvents } from "@/state/appStore";
+import { appStore, bootstrap, refreshEnv, startAutoRefresh, subscribeToEvents } from "@/state/appStore";
 
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import { NewTrainingPage } from "@/features/new-training/NewTrainingPage";
@@ -22,11 +22,18 @@ export default function App() {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    let stopAutoRefresh: (() => void) | undefined;
     void (async () => {
       await bootstrap();
       unsubscribe = subscribeToEvents();
+      // Event pushes only cover a live run; this keeps the lists, the GPU badge
+      // and the environment snapshot current without a manual Refresh.
+      stopAutoRefresh = startAutoRefresh();
     })();
-    return () => unsubscribe?.();
+    return () => {
+      unsubscribe?.();
+      stopAutoRefresh?.();
+    };
   }, []);
 
   // The status strip and badge should refresh when the window regains focus,

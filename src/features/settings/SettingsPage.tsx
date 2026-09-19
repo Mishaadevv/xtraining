@@ -39,6 +39,7 @@ import { useStore } from "@/state/store";
 import {
   appStore,
   discoverInterpreters,
+  installRuntime,
   navigate,
   openPath,
   refreshEnv,
@@ -69,7 +70,7 @@ function SectionHeading({ title, hint }: { title: string; hint?: string }) {
 }
 
 export function SettingsPage() {
-  const { settings, env, appInfo } = useStore(appStore);
+  const { settings, env, appInfo, runtimeInstall } = useStore(appStore);
   const dependencies = env.dependencies as DependencyInfo | null;
   const backends = (env.backends ?? []) as BackendCapability[];
   const plan = env.installPlan as InstallPlan | null;
@@ -230,19 +231,38 @@ export function SettingsPage() {
                 tone="warn"
                 title="Install the ML runtime to enable training"
                 actions={
-                  <Button size="sm" variant="quiet" icon={copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} onClick={() => void copyPlan()}>
-                    {copied ? "Copied" : "Copy"}
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon={<Download className="h-3.5 w-3.5" />}
+                      loading={runtimeInstall.running}
+                      onClick={() => void installRuntime()}
+                    >
+                      {runtimeInstall.running ? "Installing…" : "Install now"}
+                    </Button>
+                    <Button size="sm" variant="quiet" icon={copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} onClick={() => void copyPlan()}>
+                      {copied ? "Copied" : "Copy command"}
+                    </Button>
+                  </>
                 }
               >
                 <p className="mb-2">
-                  Run this with the interpreter selected above. On an NVIDIA machine the CUDA wheel index
-                  installs a GPU-enabled PyTorch build; a plain <code className="zq-mono">pip install torch</code>{" "}
-                  is often CPU-only.
+                  Install it right here with the selected interpreter, or copy the command and run it in a
+                  terminal. On an NVIDIA machine the CUDA wheel index installs a GPU-enabled PyTorch build;
+                  a plain <code className="zq-mono">pip install torch</code> is often CPU-only.
                 </p>
                 <pre className="zq-mono overflow-x-auto rounded-[8px] border border-[var(--border)] bg-[var(--code-bg)] p-2.5 text-[11px] leading-[17px]">
                   {plan.command}
                 </pre>
+                {runtimeInstall.lines.length ? (
+                  <pre className="zq-mono mt-3 max-h-[180px] overflow-y-auto rounded-[8px] border border-[var(--border)] bg-[var(--code-bg)] p-2.5 text-[10.5px] leading-[16px] text-[var(--text-2)]">
+                    {runtimeInstall.lines.join("\n")}
+                  </pre>
+                ) : null}
+                {runtimeInstall.phase === "failed" && runtimeInstall.error ? (
+                  <p className="mt-2 text-[11.5px] text-[var(--red)]">{runtimeInstall.error}</p>
+                ) : null}
               </Note>
             </div>
           ) : null}

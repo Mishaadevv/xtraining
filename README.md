@@ -8,6 +8,7 @@ Part of the [Zeqou ecosystem](https://mishaadevv.github.io/zeqou/).
 
 - Import models from Hugging Face or a local folder, and inspect them before committing
 - Fine-tuning, LoRA, QLoRA and SFT through `transformers` + `peft`
+- **Train from scratch**: build a small transformer (micro/tiny/small presets or a custom architecture) and train it on your dataset with no base model and no downloads
 - Datasets from JSON, JSONL, CSV, TXT, Parquet, a folder of shards, or the Hugging Face Hub
 - Dataset validation before a run: field mapping, duplicates, empty rows, over-length samples
 - Real GPU detection (`nvidia-smi` + `torch.cuda`), VRAM estimation and pre-flight warnings
@@ -17,6 +18,8 @@ Part of the [Zeqou ecosystem](https://mishaadevv.github.io/zeqou/).
 - Export a trained adapter, or merge it into its base model
 - Test the finished model in the built-in playground
 - Simple mode for a first run, Advanced mode for full control
+- One-click ML runtime installation from Settings → Environment, with live pip output
+- Background refresh: runs, libraries and the environment snapshot stay current on their own; GPU telemetry is sampled even when nothing is training
 
 ## Honest by design
 

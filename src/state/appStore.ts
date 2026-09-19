@@ -81,6 +81,14 @@ export interface PlaygroundState {
   params: { maxNewTokens: number; temperature: number; topP: number; repetitionPenalty: number };
 }
 
+export interface RuntimeInstallState {
+  running: boolean;
+  phase: "idle" | "started" | "output" | "done" | "failed";
+  lines: string[];
+  exitCode: number | null;
+  error: string | null;
+}
+
 export interface AppState {
   booted: boolean;
   bootError: BackendError | null;
@@ -103,6 +111,7 @@ export interface AppState {
   playground: PlaygroundState;
   toasts: Toast[];
   busy: Record<string, boolean>;
+  runtimeInstall: RuntimeInstallState;
 }
 
 const initialWizard: WizardState = {
@@ -171,6 +180,7 @@ const initialState: AppState = {
   },
   toasts: [],
   busy: {},
+  runtimeInstall: { running: false, phase: "idle", lines: [], exitCode: null, error: null },
 };
 
 export const appStore = new Store<AppState>(initialState);
@@ -303,6 +313,44 @@ export async function bootstrap(): Promise<void> {
 export function applyTheme(theme: "dark" | "light"): void {
   document.documentElement.dataset.theme = theme;
   document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
+/* ---------------------------------------------------------------- live refresh */
+
+// The push channels only cover a live training run; everything else would sit
+// stale until the user pressed Refresh. These intervals keep the lists and the
+// environment snapshot current on their own.
+const RUNS_REFRESH_MS = 4000;
+const LIBRARY_REFRESH_MS = 15000;
+const ENV_REFRESH_MS = 60000;
+
+/** Start the background refresh loops; returns a stop function. */
+export function startAutoRefresh(): () => void {
+  if (!isDesktop) return () => {};
+
+  const runsTimer = setInterval(() => {
+    void refreshRuns();
+  }, RUNS_REFRESH_MS);
+  const libraryTimer = setInterval(() => {
+    void refreshDatasets();
+    void refreshModels();
+    void refreshProjects();
+  }, LIBRARY_REFRESH_MS);
+  const envTimer = setInterval(() => {
+    void refreshEnv();
+  }, ENV_REFRESH_MS);
+
+  const stop = () => {
+    clearInterval(runsTimer);
+    clearInterval(libraryTimer);
+    clearInterval(envTimer);
+  };
+  // A background loop must never hold the process open on shutdown.
+  for (const timer of [runsTimer, libraryTimer, envTimer]) {
+    const unref = (timer as unknown as { unref?: () => void }).unref;
+    if (typeof unref === "function") unref.call(timer);
+  }
+  return stop;
 }
 
 /* -------------------------------------------------------------------- env */
@@ -770,12 +818,14 @@ export async function startTraining(): Promise<boolean> {
     pushToast({ title: "Select a dataset", tone: "warn" });
     return false;
   }
-  if (!wizard.config.base_model) {
+  // From-scratch runs need no base model — that is their entire point.
+  if (!wizard.config.base_model && wizard.config.method !== "scratch") {
     pushToast({ title: "Select a base model", tone: "warn" });
     return false;
   }
 
-  const name = (wizard.projectName || "").trim() || defaultProjectName(wizard.config.base_model, datasetPath);
+  const name = (wizard.projectName || "").trim()
+    || defaultProjectName(wizard.config.base_model || (wizard.config.method === "scratch" ? "scratch" : "model"), datasetPath);
   const datasetEntry = appStore.get().datasets.find((dataset) => dataset.id === wizard.datasetId) ?? null;
   const isHubDataset = Boolean(datasetEntry && datasetEntry.format === "hf");
 
@@ -1097,6 +1147,30 @@ export function clearPlaygroundHistory(): void {
   }));
 }
 
+/* -------------------------------------------------- runtime installation */
+
+/** Install the ML runtime with the configured interpreter; progress is pushed on zeqou:runtime:install. */
+export async function installRuntime(): Promise<boolean> {
+  if (!isDesktop) return false;
+  if (appStore.get().runtimeInstall.running) return false;
+  appStore.set({ runtimeInstall: { running: true, phase: "started", lines: [], exitCode: null, error: null } });
+  setBusy("installRuntime", true);
+  try {
+    const result = await bridge.env.installRuntime();
+    if (!result.ok) {
+      const error = (result.error as BackendError) ?? { message: "Installation failed." };
+      appStore.set((state) => ({
+        runtimeInstall: { ...state.runtimeInstall, running: false, phase: "failed", error: error.message },
+      }));
+      toastError(error, "Could not install the ML runtime");
+      return false;
+    }
+    return true;
+  } finally {
+    setBusy("installRuntime", false);
+  }
+}
+
 /* ------------------------------------------------------------- live events */
 
 export function subscribeToEvents(): () => void {
@@ -1178,11 +1252,18 @@ export function subscribeToEvents(): () => void {
     }),
 
     bridge.on("zeqou:gpu", (payload: any) => {
-      const { sample } = payload as { sample: { available: boolean; gpu?: Record<string, number | string> } };
+      const { runId, sample } = payload as {
+        runId: string | null;
+        sample: { available: boolean; gpu?: Record<string, number | string> };
+      };
       if (!sample || !sample.available || !sample.gpu) {
         appStore.set({ liveGpu: null });
         return;
       }
+      // During a run the main process samples every second (runId set); the
+      // always-on background sampler sends runId=null every few seconds. Both
+      // feed the same live point, so screens stay current outside of runs too.
+      if (runId) return;
       const point: GpuPoint = {
         at: Date.now(),
         utilization: (sample.gpu.utilization_gpu as number) ?? null,
@@ -1199,6 +1280,35 @@ export function subscribeToEvents(): () => void {
     bridge.on("zeqou:datasets:changed", () => void refreshDatasets()),
     bridge.on("zeqou:models:changed", () => void refreshModels()),
     bridge.on("zeqou:projects:changed", () => void refreshProjects()),
+
+    bridge.on("zeqou:runtime:install", (payload: any) => {
+      const { phase, line, exitCode, message } = payload as {
+        phase: "started" | "output" | "done" | "failed";
+        line?: string;
+        exitCode?: number;
+        message?: string;
+      };
+      appStore.set((state) => {
+        const install = state.runtimeInstall;
+        if (phase === "started") {
+          return { runtimeInstall: { running: true, phase, lines: ["$ " + String(line ?? "").slice(0, 200)], exitCode: null, error: null } };
+        }
+        if (phase === "output") {
+          return { runtimeInstall: { ...install, phase, lines: [...install.lines, String(line ?? "")].slice(-400) } };
+        }
+        if (phase === "done") {
+          return { runtimeInstall: { ...install, running: false, phase, exitCode: exitCode ?? 0 } };
+        }
+        return { runtimeInstall: { ...install, running: false, phase: "failed", exitCode: exitCode ?? null, error: message ?? null } };
+      });
+      if (phase === "done") {
+        pushToast({ title: "ML runtime installed", message: "Re-detecting the environment…", tone: "good" });
+        void refreshEnv(true);
+      }
+      if (phase === "failed") {
+        pushToast({ title: "Installation failed", message: message ?? "pip reported an error — see the log.", tone: "bad" });
+      }
+    }),
     bridge.on("zeqou:inference:token", (payload: any) => {
       const { token } = payload as { token: string };
       appStore.set((state) => ({

@@ -15,3 +15,7 @@ __all__ = [
     "backend_capabilities",
     "get_backend",
 ]
+
+# Exported lazily by name so importing this package stays dependency-free.
+SCRATCH_BACKEND = "scratch"
+HF_PEFT_BACKEND = "hf-peft"

@@ -14,6 +14,7 @@ const CHANNELS = [
   "zeqou:training:log",
   "zeqou:training:finished",
   "zeqou:gpu",
+  "zeqou:runtime:install",
   "zeqou:datasets:changed",
   "zeqou:models:changed",
   "zeqou:projects:changed",
@@ -78,6 +79,8 @@ contextBridge.exposeInMainWorld("zeqou", {
     interpreters: (options) => ipcRenderer.invoke("zeqou:env:interpreters", options || {}),
     setInterpreter: (executablePath) => ipcRenderer.invoke("zeqou:env:setInterpreter", executablePath),
     installPlan: (cudaTag) => ipcRenderer.invoke("zeqou:env:installPlan", cudaTag),
+    installRuntime: () => ipcRenderer.invoke("zeqou:env:installRuntime"),
+    installStatus: () => ipcRenderer.invoke("zeqou:env:installStatus"),
     backends: () => ipcRenderer.invoke("zeqou:env:backends"),
   },
 

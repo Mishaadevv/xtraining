@@ -13,7 +13,7 @@ export interface Result {
   [key: string]: unknown;
 }
 
-export type Method = "lora" | "qlora" | "sft" | "full";
+export type Method = "lora" | "qlora" | "sft" | "full" | "scratch";
 export type Quantization = "none" | "4bit" | "8bit";
 export type Precision = "auto" | "bf16" | "fp16" | "fp32";
 
@@ -71,6 +71,13 @@ export interface TrainingConfig {
   resume_from_checkpoint: string | null;
   dataset: DatasetSelection;
   trust_remote_code?: boolean;
+  /** From-scratch architecture (method === "scratch"). */
+  scratch_size?: string;
+  scratch_layers?: number;
+  scratch_hidden?: number;
+  scratch_heads?: number;
+  scratch_vocab?: number;
+  scratch_ffn?: number;
 }
 
 export interface AutoReason {

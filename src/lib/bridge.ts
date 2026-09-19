@@ -47,6 +47,8 @@ interface RawBridge {
     interpreters(options?: { force?: boolean }): Promise<Record<string, unknown>>;
     setInterpreter(path: string | null): Promise<Record<string, unknown>>;
     installPlan(cudaTag?: string): Promise<Record<string, unknown>>;
+    installRuntime(): Promise<Record<string, unknown>>;
+    installStatus(): Promise<Record<string, unknown>>;
     backends(): Promise<Record<string, unknown>>;
   };
   hardware: {
@@ -233,6 +235,8 @@ export const bridge = {
       raw ? call(() => raw.env.setInterpreter(path)) : desktopOnly("Interpreter selection"),
     installPlan: (cudaTag?: string): Promise<CallResult & { plan?: InstallPlan }> =>
       raw ? call(() => raw.env.installPlan(cudaTag)) : (desktopOnly("Install plans") as never),
+    installRuntime: () => (raw ? call(() => raw.env.installRuntime()) : desktopOnly("Runtime installation")),
+    installStatus: () => (raw ? call(() => raw.env.installStatus()) : desktopOnly("Runtime installation")),
     backends: () => (raw ? call(() => raw.env.backends()) : desktopOnly("Backend detection")),
   },
 

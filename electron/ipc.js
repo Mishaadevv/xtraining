@@ -212,8 +212,97 @@ function register() {
     return ok({ backends: response.result.backends });
   }));
 
+  // Install the ML runtime with the selected interpreter, streaming pip's
+  // output to the renderer as it goes. One install at a time.
+  let installChild = null;
+  ipcMain.handle("zeqou:env:installRuntime", wrap(async () => {
+    if (installChild) {
+      return { ok: false, error: { code: "install_busy", message: "An installation is already running." } };
+    }
+    const interpreter = await python.resolve();
+    if (!interpreter) {
+      return {
+        ok: false,
+        error: {
+          code: "no_python",
+          message: "No Python interpreter is available.",
+          hint: "Install Python 3.10–3.13 and select it in Settings → Environment.",
+        },
+      };
+    }
+    const settings = store.settings().get();
+    const planResponse = await python.run(["install-plan", ...(settings.cudaWheelTag ? ["--cuda-tag", settings.cudaWheelTag] : [])]);
+    const plan = planResponse.result;
+    if (!plan || !Array.isArray(plan.argv) || plan.argv.length < 3) {
+      return { ok: false, error: planResponse.error || { code: "no_plan", message: "The install plan could not be built." } };
+    }
+
+    // plan.argv[0] is the interpreter the *backend* resolved; run pip with the
+    // exact interpreter so packages land where the app will look for them.
+    const pipArgv = ["-m", "pip", "install", "--upgrade", ...plan.argv.slice(3)];
+    // A CUDA tag means torch must come from the pytorch wheel index first.
+    if (settings.cudaWheelTag && plan.argv.includes("--index-url")) {
+      pipArgv.push("--index-url", `https://download.pytorch.org/whl/${settings.cudaWheelTag}`);
+    }
+
+    const { spawn } = require("node:child_process");
+    installChild = spawn(interpreter.command, [...(interpreter.args || []), ...pipArgv], {
+      env: python.buildEnv(),
+      windowsHide: true,
+    });
+    emit("zeqou:runtime:install", { phase: "started", command: [interpreter.command, ...pipArgv].join(" ") });
+
+    const onLine = (line) => {
+      if (line && line.trim()) emit("zeqou:runtime:install", { phase: "output", line: line.trim() });
+    };
+    installChild.stdout.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach(onLine));
+    installChild.stderr.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach(onLine));
+
+    return await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        try { installChild.kill(); } catch { /* already gone */ }
+      }, 45 * 60 * 1000); // torch downloads are huge; be patient
+      timer.unref?.();
+      installChild.on("error", (error) => {
+        installChild = null;
+        clearTimeout(timer);
+        emit("zeqou:runtime:install", { phase: "failed", message: error.message });
+        resolve({ ok: false, error: { code: "spawn_failed", message: error.message } });
+      });
+      installChild.on("close", (code) => {
+        installChild = null;
+        clearTimeout(timer);
+        emit("zeqou:runtime:install", { phase: code === 0 ? "done" : "failed", exitCode: code });
+        resolve(code === 0
+          ? ok({ exitCode })
+          : { ok: false, error: { code: "pip_failed", message: `pip exited with code ${code}. See the log for the reason.` } });
+      });
+    });
+  }));
+
+  ipcMain.handle("zeqou:env:installStatus", wrap(() => ok({ running: Boolean(installChild) })));
+
   /* ------------------------------------------------------------ hardware */
   ipcMain.handle("zeqou:hardware:sample", wrap(async () => ok({ sample: await hardware.sample() })));
+
+  // Always-on GPU telemetry: one nvidia-smi call every few seconds, pushed to
+  // every window. The renderer keeps a flat series for the whole session, and
+  // jobs.js adds its denser per-run sampler on top while a run is live.
+  const GPU_SAMPLE_INTERVAL_MS = 3000;
+  let gpuTimer = null;
+  const startGpuSampler = () => {
+    if (gpuTimer) return;
+    gpuTimer = setInterval(async () => {
+      try {
+        const sample = await hardware.sample();
+        emit("zeqou:gpu", { runId: null, sample });
+      } catch {
+        /* the window may be gone; sampling resumes on the next tick */
+      }
+    }, GPU_SAMPLE_INTERVAL_MS);
+    if (gpuTimer.unref) gpuTimer.unref();
+  };
+  startGpuSampler();
 
   ipcMain.handle("zeqou:hardware:detect", wrap(async () => {
     const response = await python.run(["hardware"]);

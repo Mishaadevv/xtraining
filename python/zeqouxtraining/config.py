@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-METHODS = ("lora", "qlora", "sft", "full")
+METHODS = ("lora", "qlora", "sft", "full", "scratch")
 QUANTIZATIONS = ("none", "4bit", "8bit")
 PRECISIONS = ("auto", "bf16", "fp16", "fp32")
 SCHEDULERS = ("linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup")
@@ -49,9 +49,26 @@ METHOD_INFO: dict[str, dict[str, Any]] = {
         "needs_base_model": True,
         "quantized": False,
     },
+    "scratch": {
+        "label": "From scratch",
+        "summary": "Train a fresh model from random weights on your dataset.",
+        "detail": "No base model, no downloads: a small transformer is built from "
+                  "the architecture settings and trained on the dataset. Useful for "
+                  "tiny domain models and experiments; it needs far more data than "
+                  "fine-tuning to become good.",
+        "needs_base_model": False,
+        "quantized": False,
+    },
 }
 
 DEFAULTS: dict[str, Any] = {
+    # --- from-scratch architecture (used only when method == "scratch") -----
+    "scratch_size": "tiny",
+    "scratch_layers": 4,
+    "scratch_hidden": 256,
+    "scratch_heads": 4,
+    "scratch_vocab": 16000,
+    "scratch_ffn": 1024,
     "method": "lora",
     "base_model": "",
     "output_name": "",
@@ -168,10 +185,11 @@ def validate(config: dict[str, Any], hardware: dict[str, Any] | None = None,
         issues.append({"severity": severity, "code": code, "message": message,
                        "hint": hint, "field": field})
 
-    if not config.get("base_model"):
+    # Training from scratch is the one method that needs no base model.
+    if not config.get("base_model") and config.get("method") != "scratch":
         issue("error", "no_base_model",
               "No base model selected.",
-              "Pick a Hugging Face model or point at a local model folder.", "base_model")
+              "Pick a Hugging Face model, point at a local model folder, or switch the method to From scratch.", "base_model")
 
     dataset = config.get("dataset") or {}
     if not dataset.get("path") and not dataset.get("hf_id"):
@@ -198,6 +216,22 @@ def validate(config: dict[str, Any], hardware: dict[str, Any] | None = None,
         issue("warning", "full_ft_on_cpu",
               "Full fine-tuning on CPU will be extremely slow.",
               "Use LoRA/QLoRA on a CUDA device, or reduce the model size.", "method")
+
+    if config["method"] == "scratch":
+        size = str(config.get("scratch_size") or "tiny").lower()
+        if size not in ("micro", "tiny", "small"):
+            issue("warning", "scratch_size_unknown",
+                  f"Unknown scratch size '{size}'; the default 'tiny' will be used.",
+                  "Sizes: micro, tiny, small.", "scratch_size")
+        if not cuda_ready:
+            issue("warning", "scratch_on_cpu",
+                  "Training from scratch on CPU is slow even for a tiny model.",
+                  "Keep the dataset small and the epochs modest on this machine.", "method")
+        vocab = int(config.get("scratch_vocab") or 0)
+        if vocab and vocab < 1000:
+            issue("warning", "scratch_vocab_small",
+                  f"A vocabulary of {vocab:,} is very small.",
+                  "Vocabularies below 1 000 tokens can only express tiny domains.", "scratch_vocab")
 
     if config["precision"] in ("fp16", "bf16") and not cuda_ready:
         issue("warning", "precision_ignored",
@@ -405,6 +439,9 @@ def auto_configure(
         })
 
     patch["optimizer"] = "auto"
+
+    # From-scratch architecture values come from DEFAULTS; nothing here is
+    # hardware-tuned because there is no base model to size against.
 
     # Learning rate depends on how much of the model is actually being trained.
     method = patch.get("method", "lora")
