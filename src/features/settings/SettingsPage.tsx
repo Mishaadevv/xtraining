@@ -248,16 +248,18 @@ export function SettingsPage() {
                 }
               >
                 <p className="mb-2">
-                  Install it right here with the selected interpreter, or copy the command and run it in a
-                  terminal. On an NVIDIA machine the CUDA wheel index installs a GPU-enabled PyTorch build;
-                  a plain <code className="zq-mono">pip install torch</code> is often CPU-only.
+                  Press <strong>Install now</strong> and the app creates its own isolated environment
+                  (a venv in the app data folder — your system Python is never touched), installs
+                  PyTorch{settings?.cudaWheelTag ? ` from the ${settings.cudaWheelTag} wheel index` : ""} and
+                  every companion package, then switches itself to that environment. The pip command is
+                  shown for anyone who prefers a terminal:
                 </p>
                 <pre className="zq-mono overflow-x-auto rounded-[8px] border border-[var(--border)] bg-[var(--code-bg)] p-2.5 text-[11px] leading-[17px]">
                   {plan.command}
                 </pre>
-                {runtimeInstall.lines.length ? (
-                  <pre className="zq-mono mt-3 max-h-[180px] overflow-y-auto rounded-[8px] border border-[var(--border)] bg-[var(--code-bg)] p-2.5 text-[10.5px] leading-[16px] text-[var(--text-2)]">
-                    {runtimeInstall.lines.join("\n")}
+                {runtimeInstall.running || runtimeInstall.lines.length ? (
+                  <pre className="zq-mono mt-3 max-h-[200px] overflow-y-auto rounded-[8px] border border-[var(--border)] bg-[var(--code-bg)] p-2.5 text-[10.5px] leading-[16px] text-[var(--text-2)]">
+                    {runtimeInstall.lines.join("\n") || "Preparing…"}
                   </pre>
                 ) : null}
                 {runtimeInstall.phase === "failed" && runtimeInstall.error ? (

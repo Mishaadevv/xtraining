@@ -87,6 +87,7 @@ export interface RuntimeInstallState {
   lines: string[];
   exitCode: number | null;
   error: string | null;
+  venv: string | null;
 }
 
 export interface AppState {
@@ -180,7 +181,7 @@ const initialState: AppState = {
   },
   toasts: [],
   busy: {},
-  runtimeInstall: { running: false, phase: "idle", lines: [], exitCode: null, error: null },
+  runtimeInstall: { running: false, phase: "idle", lines: [], exitCode: null, error: null, venv: null },
 };
 
 export const appStore = new Store<AppState>(initialState);
@@ -1153,7 +1154,7 @@ export function clearPlaygroundHistory(): void {
 export async function installRuntime(): Promise<boolean> {
   if (!isDesktop) return false;
   if (appStore.get().runtimeInstall.running) return false;
-  appStore.set({ runtimeInstall: { running: true, phase: "started", lines: [], exitCode: null, error: null } });
+  appStore.set({ runtimeInstall: { running: true, phase: "started", lines: [], exitCode: null, error: null, venv: null } });
   setBusy("installRuntime", true);
   try {
     const result = await bridge.env.installRuntime();
@@ -1282,27 +1283,32 @@ export function subscribeToEvents(): () => void {
     bridge.on("zeqou:projects:changed", () => void refreshProjects()),
 
     bridge.on("zeqou:runtime:install", (payload: any) => {
-      const { phase, line, exitCode, message } = payload as {
+      const { phase, line, exitCode, message, venv } = payload as {
         phase: "started" | "output" | "done" | "failed";
         line?: string;
         exitCode?: number;
         message?: string;
+        venv?: string;
       };
       appStore.set((state) => {
         const install = state.runtimeInstall;
         if (phase === "started") {
-          return { runtimeInstall: { running: true, phase, lines: ["$ " + String(line ?? "").slice(0, 200)], exitCode: null, error: null } };
+          return { runtimeInstall: { running: true, phase, lines: [], exitCode: null, error: null, venv: null } };
         }
         if (phase === "output") {
           return { runtimeInstall: { ...install, phase, lines: [...install.lines, String(line ?? "")].slice(-400) } };
         }
         if (phase === "done") {
-          return { runtimeInstall: { ...install, running: false, phase, exitCode: exitCode ?? 0 } };
+          return { runtimeInstall: { ...install, running: false, phase, exitCode: exitCode ?? 0, venv: venv ?? null } };
         }
         return { runtimeInstall: { ...install, running: false, phase: "failed", exitCode: exitCode ?? null, error: message ?? null } };
       });
       if (phase === "done") {
-        pushToast({ title: "ML runtime installed", message: "Re-detecting the environment…", tone: "good" });
+        pushToast({
+          title: "ML runtime installed",
+          message: "The app environment is ready. Re-detecting…",
+          tone: "good",
+        });
         void refreshEnv(true);
       }
       if (phase === "failed") {

@@ -212,75 +212,146 @@ function register() {
     return ok({ backends: response.result.backends });
   }));
 
-  // Install the ML runtime with the selected interpreter, streaming pip's
-  // output to the renderer as it goes. One install at a time.
+  /*
+   * ML runtime installation, redone from scratch.
+   *
+   * The old approach pip-installed into whatever interpreter was selected —
+   * which fails quietly on Python 3.14 (no torch wheels exist for it yet) and
+   * duplicated the --index-url flag. The new approach is honest and isolated:
+   *
+   *   1. A base interpreter is chosen (3.10–3.13 preferred, 3.14 refused with
+   *      a readable reason instead of a pip wall of red).
+   *   2. The app creates its OWN virtualenv under userData/venv, so the
+   *      user's system Python is never touched.
+   *   3. pip runs inside that venv; torch comes from the CUDA wheel index
+   *      exactly once when a tag is configured.
+   *   4. The venv is saved in settings, and resolveInterpreterOrder puts it
+   *      first so every backend call uses it.
+   */
+  const { spawn: spawnInstall, execFile: execFileInstall } = require("node:child_process");
   let installChild = null;
+
+  const VENV_MIN = [3, 10];
+  const VENV_MAX = [3, 13]; // torch ships no wheels for 3.14 yet — say so instead of failing obscurely
+
+  function parsePyVersion(versionString) {
+    const match = String(versionString || "").match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+    if (!match) return null;
+    return { major: Number(match[1]), minor: Number(match[2]) };
+  }
+
+  function runInstallStep(command, args, onLine, timeoutMs = 300000) {
+    return new Promise((resolve) => {
+      const child = execFileInstall(command, args, { windowsHide: true, maxBuffer: 32 * 1024 * 1024, timeout: timeoutMs }, (error, stdout, stderr) => {
+        resolve({ code: error && typeof error.code === "number" ? error.code : error ? -1 : 0, stdout: String(stdout || ""), stderr: String(stderr || "") });
+      });
+      child.stdout?.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach(onLine));
+      child.stderr?.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach(onLine));
+    });
+  }
+
+  async function pickBaseInterpreter() {
+    // The configured interpreter first, then every discoverable one; the
+    // newest one inside the supported range wins, because newer point
+    // releases fix packaging bugs without changing the ABI.
+    const discovered = await python.discover(false);
+    const usable = discovered.filter((entry) => entry.available && entry.info);
+    const scored = usable.map((entry) => {
+      const version = parsePyVersion(entry.info.version);
+      const ok = version && version.major === 3 && version.minor >= VENV_MIN[1] && version.minor <= VENV_MAX[1];
+      return { entry, version, ok };
+    });
+    const good = scored.filter((item) => item.ok).sort((a, b) => b.version.minor - a.version.minor);
+    return good.length ? good[0].entry : null;
+  }
+
+  function venvPythonPath(venvDir) {
+    return process.platform === "win32"
+      ? path.join(venvDir, "Scripts", "python.exe")
+      : path.join(venvDir, "bin", "python");
+  }
+
   ipcMain.handle("zeqou:env:installRuntime", wrap(async () => {
     if (installChild) {
       return { ok: false, error: { code: "install_busy", message: "An installation is already running." } };
     }
-    const interpreter = await python.resolve();
-    if (!interpreter) {
+
+    const send = (payload) => emit("zeqou:runtime:install", payload);
+    const base = await pickBaseInterpreter();
+    if (!base) {
+      send({ phase: "failed", message: "No suitable Python interpreter found." });
       return {
         ok: false,
         error: {
           code: "no_python",
-          message: "No Python interpreter is available.",
-          hint: "Install Python 3.10–3.13 and select it in Settings → Environment.",
+          message: "No suitable Python interpreter was found (3.10–3.13 needed).",
+          hint: "Python 3.14 is installed on this machine, but PyTorch does not ship wheels for it yet. Install Python 3.12 or 3.13 from python.org, then press Install again — the app will find it automatically.",
         },
       };
     }
+    send({ phase: "output", line: `Base interpreter: ${base.info.executable} (Python ${base.info.version})` });
+
+    const venvDir = path.join(dirs.root(), "venv");
+    const venvPython = venvPythonPath(venvDir);
+    const isNew = !fs.existsSync(venvPython);
+
+    if (isNew) {
+      send({ phase: "output", line: "Creating an isolated environment for the app (your system Python is not touched)…" });
+      const created = await runInstallStep(base.command, [...(base.args || []), "-m", "venv", venvDir], (line) => send({ phase: "output", line }));
+      if (created.code !== 0 || !fs.existsSync(venvPython)) {
+        send({ phase: "failed", message: "The virtual environment could not be created." });
+        return { ok: false, error: { code: "venv_failed", message: "Could not create the app environment (venv).", hint: (created.stderr || created.stdout).split("\n").slice(-4).join(" ") } };
+      }
+    } else {
+      send({ phase: "output", line: "Reusing the existing app environment." });
+    }
+
+    // Make sure pip itself is current inside the venv, then install the stack.
     const settings = store.settings().get();
-    const planResponse = await python.run(["install-plan", ...(settings.cudaWheelTag ? ["--cuda-tag", settings.cudaWheelTag] : [])]);
-    const plan = planResponse.result;
-    if (!plan || !Array.isArray(plan.argv) || plan.argv.length < 3) {
-      return { ok: false, error: planResponse.error || { code: "no_plan", message: "The install plan could not be built." } };
-    }
+    const cudaTag = settings.cudaWheelTag || null;
+    send({ phase: "output", line: cudaTag ? `Installing the ML runtime (CUDA ${cudaTag} wheel index for torch)…` : "Installing the ML runtime (CPU build of torch)…" });
 
-    // plan.argv[0] is the interpreter the *backend* resolved; run pip with the
-    // exact interpreter so packages land where the app will look for them.
-    const pipArgv = ["-m", "pip", "install", "--upgrade", ...plan.argv.slice(3)];
-    // A CUDA tag means torch must come from the pytorch wheel index first.
-    if (settings.cudaWheelTag && plan.argv.includes("--index-url")) {
-      pipArgv.push("--index-url", `https://download.pytorch.org/whl/${settings.cudaWheelTag}`);
-    }
+    const packages = ["torch", "transformers", "peft", "accelerate", "safetensors", "numpy", "huggingface_hub", "datasets", "pyarrow", "sentencepiece"];
+    const pipArgs = ["-m", "pip", "install", "--upgrade", ...packages];
+    if (cudaTag) pipArgs.push("--index-url", `https://download.pytorch.org/whl/${cudaTag}`, "--extra-index-url", "https://pypi.org/simple");
 
-    const { spawn } = require("node:child_process");
-    installChild = spawn(interpreter.command, [...(interpreter.args || []), ...pipArgv], {
-      env: python.buildEnv(),
-      windowsHide: true,
-    });
-    emit("zeqou:runtime:install", { phase: "started", command: [interpreter.command, ...pipArgv].join(" ") });
-
-    const onLine = (line) => {
-      if (line && line.trim()) emit("zeqou:runtime:install", { phase: "output", line: line.trim() });
-    };
-    installChild.stdout.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach(onLine));
-    installChild.stderr.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach(onLine));
-
-    return await new Promise((resolve) => {
+    installChild = spawnInstall(venvPython, pipArgs, { windowsHide: true });
+    const exitCode = await new Promise((resolve) => {
       const timer = setTimeout(() => {
         try { installChild.kill(); } catch { /* already gone */ }
-      }, 45 * 60 * 1000); // torch downloads are huge; be patient
+      }, 60 * 60 * 1000); // torch + CUDA wheels can be a multi-gigabyte download
       timer.unref?.();
       installChild.on("error", (error) => {
-        installChild = null;
         clearTimeout(timer);
-        emit("zeqou:runtime:install", { phase: "failed", message: error.message });
-        resolve({ ok: false, error: { code: "spawn_failed", message: error.message } });
+        resolve(-1);
+        send({ phase: "failed", message: error.message });
       });
+      installChild.stdout.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach((line) => line.trim() && send({ phase: "output", line: line.trim() })));
+      installChild.stderr.on("data", (chunk) => String(chunk).split(/\r?\n/).forEach((line) => line.trim() && send({ phase: "output", line: line.trim() })));
       installChild.on("close", (code) => {
-        installChild = null;
         clearTimeout(timer);
-        emit("zeqou:runtime:install", { phase: code === 0 ? "done" : "failed", exitCode: code });
-        resolve(code === 0
-          ? ok({ exitCode })
-          : { ok: false, error: { code: "pip_failed", message: `pip exited with code ${code}. See the log for the reason.` } });
+        resolve(code ?? -1);
       });
     });
+    installChild = null;
+
+    if (exitCode !== 0) {
+      send({ phase: "failed", message: `pip exited with code ${exitCode}.` });
+      return { ok: false, error: { code: "pip_failed", message: `pip exited with code ${exitCode}.`, hint: "The full pip log is shown above. The most common cause is a proxy/firewall blocking the download." } };
+    }
+
+    // Point the app at the venv so every backend call uses it from now on.
+    python.setInterpreter(venvPython);
+    store.settings().merge({ interpreterPath: venvPython });
+    send({ phase: "output", line: `Done. The app environment is at ${venvDir}` });
+    send({ phase: "done", exitCode: 0, venv: venvDir });
+    return ok({ exitCode: 0, venv: venvDir, interpreter: venvPython });
   }));
 
-  ipcMain.handle("zeqou:env:installStatus", wrap(() => ok({ running: Boolean(installChild) })));
+  ipcMain.handle("zeqou:env:installStatus", wrap(async () => {
+    const venvPython = venvPythonPath(path.join(dirs.root(), "venv"));
+    return ok({ running: Boolean(installChild), venvExists: fs.existsSync(venvPython), venvPython });
+  }));
 
   /* ------------------------------------------------------------ hardware */
   ipcMain.handle("zeqou:hardware:sample", wrap(async () => ok({ sample: await hardware.sample() })));

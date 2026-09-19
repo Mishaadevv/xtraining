@@ -8,6 +8,11 @@
  *   stream() — long-lived command (training, inference), emits events as they
  *              arrive and exposes stop/pause control
  *
+ * Interpreter resolution is venv-first: the configured interpreter wins (after
+ * a successful "Install now" that is the app's own venv under userData/venv),
+ * then the system candidates are probed in order. The app never writes into
+ * the user's system Python.
+ *
  * stderr is *never* parsed as protocol; it is forwarded as log lines. That is
  * what keeps third-party library output from corrupting the channel.
  */
