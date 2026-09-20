@@ -75,7 +75,7 @@ function writeMinimalModelDir() {
 }
 
 async function main() {
-  const { ensureDirs, dirs } = require("../electron/lib/paths");
+  const { ensureDirs, dirs, files } = require("../electron/lib/paths");
   const store = require("../electron/lib/store");
   const python = require("../electron/lib/python");
   const hardware = require("../electron/lib/hardware");
@@ -90,7 +90,7 @@ async function main() {
   const settings = store.settings();
   record("settings file is created with defaults", settings.get().version === 1);
   settings.merge({ simpleMode: false });
-  const reloaded = new store.JsonStore(require("../electron/lib/paths").files.settings(), {});
+  const reloaded = new store.JsonStore(files.settings(), {});
   record("settings round-trip to disk", reloaded.get().simpleMode === false);
   record(
     "writes are atomic (no temp files left behind)",
@@ -194,6 +194,33 @@ async function main() {
 
   record("a duplicate import refreshes instead of duplicating", (await registry.importDataset(path.join(FIXTURES, "good.jsonl"))).refreshed === true);
 
+  /* ------------------------------------------------------ built-in datasets */
+  section("Built-in datasets");
+  const bundled = registry.listBuiltinDatasets();
+  record(
+    "bundled datasets ship with the app",
+    bundled.length >= 20,
+    `${bundled.length} files in ${path.basename(dirs.datasets())}`,
+  );
+  record("every bundled dataset file exists on disk", bundled.every((item) => fs.existsSync(item.path)));
+  const defaultBundled = bundled.find((item) => item.default);
+  record("one bundled dataset is marked as the default", Boolean(defaultBundled), defaultBundled?.name);
+
+  if (defaultBundled) {
+    const bundledReport = await registry.validateDataset(defaultBundled.id);
+    record(
+      "the default bundled dataset validates through the backend",
+      bundledReport.ok === true && Boolean(bundledReport.report) && bundledReport.report.status !== "errors",
+      `${bundledReport.report?.dataset?.records} records · mapping ${bundledReport.report?.mapping?.kind}`,
+    );
+    const bundledRemove = registry.removeDataset(defaultBundled.id);
+    record(
+      "bundled datasets cannot be removed",
+      bundledRemove.ok === false && bundledRemove.error?.code === "builtin",
+      bundledRemove.error?.message,
+    );
+  }
+
   const missing = await registry.importDataset(path.join(SANDBOX, "does-not-exist.jsonl"));
   record("a missing path fails with a clear message", missing.ok === false && missing.error.code === "not_found", missing.error?.message);
 
@@ -258,8 +285,8 @@ async function main() {
     hfModel.ok === true && hfModel.model.trainable === false && Boolean(hubWarning),
     hubWarning ? hubWarning.message : "no warning attached",
   );
-  const noSlash = await registry.addModel("");
-  record("an empty model source is refused", noSlash.ok === false, noSlash.error?.message);
+  const noSource = await registry.addModel("");
+  record("an empty model source is refused", noSource.ok === false, noSource.error?.message);
 
   /* -------------------------------------------------------------- export */
   section("Model export");
@@ -415,7 +442,7 @@ async function main() {
         artifactError.ok === true && Array.isArray(artifactError.checkpoints) && artifactError.checkpoints.length === 0,
       );
 
-      const deleted = jobs.deleteRun(started.runId);
+      const deleted = await jobs.deleteRun(started.runId);
       record("a run can be removed from history", deleted.ok === true && !jobs.listRuns().some((run) => run.id === started.runId));
     }
   }

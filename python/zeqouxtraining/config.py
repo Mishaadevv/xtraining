@@ -13,6 +13,7 @@ from typing import Any
 METHODS = ("lora", "qlora", "sft", "full", "scratch")
 QUANTIZATIONS = ("none", "4bit", "8bit")
 PRECISIONS = ("auto", "bf16", "fp16", "fp32")
+DEVICES = ("auto", "cuda", "cpu", "both")
 SCHEDULERS = ("linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup")
 
 METHOD_INFO: dict[str, dict[str, Any]] = {
@@ -109,13 +110,19 @@ DEFAULTS: dict[str, Any] = {
 # (min_vram_gb, batch_size, grad_accum, context_length, quantization,
 #  gradient_checkpointing, lora_r)
 _VRAM_TIERS: list[tuple[float, int, int, int, str, bool, int]] = [
-    (8.0,    1, 16, 512,  "4bit", True,  8),
-    (12.0,   2, 8,  512,  "4bit", True,  16),
-    (16.0,   4, 4,  1024, "none", True,  16),
-    (24.0,   4, 4,  1024, "none", False, 16),
-    (40.0,   8, 2,  2048, "none", False, 32),
+    (8.0, 1, 16, 512, "4bit", True, 8),
+    (12.0, 2, 8, 512, "4bit", True, 16),
+    (16.0, 4, 4, 1024, "none", True, 16),
+    (24.0, 4, 4, 1024, "none", False, 16),
+    (40.0, 8, 2, 2048, "none", False, 32),
     (1000.0, 16, 1, 4096, "none", False, 64),
 ]
+
+_INT_FIELDS = ("epochs", "batch_size", "gradient_accumulation", "context_length",
+               "lora_r", "lora_alpha", "save_steps", "save_total_limit",
+               "logging_steps", "max_samples", "seed")
+_FLOAT_FIELDS = ("learning_rate", "warmup_ratio", "weight_decay", "lora_dropout",
+                 "eval_split", "max_grad_norm")
 
 
 def normalize(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -127,19 +134,17 @@ def normalize(raw: dict[str, Any] | None) -> dict[str, Any]:
     for key, value in raw.items():
         if key == "dataset" and isinstance(value, dict):
             config["dataset"].update(value)
-        elif key in DEFAULTS or key in ("job_id", "run_dir", "total_steps"):
+        elif key in DEFAULTS or key in ("job_id", "run_dir", "total_steps",
+                                        "dataset_records", "dataset_usable"):
             config[key] = value
 
-    for key in ("epochs", "batch_size", "gradient_accumulation", "context_length",
-                "lora_r", "lora_alpha", "save_steps", "save_total_limit",
-                "logging_steps", "max_samples", "seed"):
+    for key in _INT_FIELDS:
         try:
             config[key] = int(config[key])
         except (TypeError, ValueError):
             config[key] = DEFAULTS[key]
 
-    for key in ("learning_rate", "warmup_ratio", "weight_decay", "lora_dropout",
-                "eval_split", "max_grad_norm"):
+    for key in _FLOAT_FIELDS:
         try:
             config[key] = float(config[key])
         except (TypeError, ValueError):
@@ -157,6 +162,9 @@ def normalize(raw: dict[str, Any] | None) -> dict[str, Any]:
 
     precision = str(config.get("precision") or "auto").lower()
     config["precision"] = precision if precision in PRECISIONS else "auto"
+
+    device = str(config.get("device") or "auto").lower()
+    config["device"] = device if device in DEVICES else "auto"
 
     scheduler = str(config.get("lr_scheduler") or "cosine").lower()
     config["lr_scheduler"] = scheduler if scheduler in SCHEDULERS else "cosine"
@@ -189,13 +197,15 @@ def validate(config: dict[str, Any], hardware: dict[str, Any] | None = None,
     if not config.get("base_model") and config.get("method") != "scratch":
         issue("error", "no_base_model",
               "No base model selected.",
-              "Pick a Hugging Face model, point at a local model folder, or switch the method to From scratch.", "base_model")
+              "Pick a Hugging Face model, point at a local model folder, or switch the method to From scratch.",
+              "base_model")
 
     dataset = config.get("dataset") or {}
     if not dataset.get("path") and not dataset.get("hf_id"):
         issue("error", "no_dataset",
               "No dataset selected.",
-              "Import a JSON/JSONL/CSV/TXT file or point at a dataset folder.", "dataset")
+              "Import a JSON/JSONL/CSV/TXT file or point at a dataset folder.",
+              "dataset")
 
     hardware = hardware or {}
     cuda_ready = bool(hardware.get("cuda_ready"))
@@ -215,38 +225,45 @@ def validate(config: dict[str, Any], hardware: dict[str, Any] | None = None,
     if config["method"] == "full" and not cuda_ready:
         issue("warning", "full_ft_on_cpu",
               "Full fine-tuning on CPU will be extremely slow.",
-              "Use LoRA/QLoRA on a CUDA device, or reduce the model size.", "method")
+              "Use LoRA/QLoRA on a CUDA device, or reduce the model size.",
+              "method")
 
     if config["method"] == "scratch":
         size = str(config.get("scratch_size") or "tiny").lower()
         if size not in ("micro", "tiny", "small"):
             issue("warning", "scratch_size_unknown",
                   f"Unknown scratch size '{size}'; the default 'tiny' will be used.",
-                  "Sizes: micro, tiny, small.", "scratch_size")
+                  "Sizes: micro, tiny, small.",
+                  "scratch_size")
         if not cuda_ready:
             issue("warning", "scratch_on_cpu",
                   "Training from scratch on CPU is slow even for a tiny model.",
-                  "Keep the dataset small and the epochs modest on this machine.", "method")
+                  "Keep the dataset small and the epochs modest on this machine.",
+                  "method")
         vocab = int(config.get("scratch_vocab") or 0)
         if vocab and vocab < 1000:
             issue("warning", "scratch_vocab_small",
                   f"A vocabulary of {vocab:,} is very small.",
-                  "Vocabularies below 1 000 tokens can only express tiny domains.", "scratch_vocab")
+                  "Vocabularies below 1 000 tokens can only express tiny domains.",
+                  "scratch_vocab")
 
     if config["precision"] in ("fp16", "bf16") and not cuda_ready:
         issue("warning", "precision_ignored",
               f"{config['precision']} requires CUDA and will fall back to fp32 on CPU.",
-              "This is handled automatically; no action needed.", "precision")
+              "This is handled automatically; no action needed.",
+              "precision")
 
     if config["precision"] == "bf16" and cuda_ready and not hardware.get("cuda", {}).get("bf16_supported"):
         issue("warning", "bf16_unsupported",
               "This GPU does not support bfloat16.",
-              "Switch precision to fp16, or leave it on auto.", "precision")
+              "Switch precision to fp16, or leave it on auto.",
+              "precision")
 
     if config["batch_size"] > 32:
         issue("warning", "large_batch",
               f"Batch size {config['batch_size']} is unusually large.",
-              "Large batches usually need a higher learning rate and more VRAM.", "batch_size")
+              "Large batches usually need a higher learning rate and more VRAM.",
+              "batch_size")
 
     if config["learning_rate"] > 1e-2:
         issue("warning", "high_lr",
@@ -257,35 +274,53 @@ def validate(config: dict[str, Any], hardware: dict[str, Any] | None = None,
     if config["learning_rate"] < 1e-7:
         issue("warning", "low_lr",
               "The learning rate is extremely low; training may appear frozen.",
-              "LoRA typically uses 1e-4 – 5e-4.", "learning_rate")
+              "LoRA typically uses 1e-4 – 5e-4.",
+              "learning_rate")
 
     if config["epochs"] > 20:
         issue("warning", "many_epochs",
               f"{config['epochs']} epochs will take a long time and can overfit.",
-              "Small datasets rarely need more than 3–5 epochs.", "epochs")
+              "Small datasets rarely need more than 3–5 epochs.",
+              "epochs")
 
     if config["context_length"] > 8192:
         issue("warning", "long_context",
               f"Context length {config['context_length']} increases memory sharply.",
-              "Attention cost grows quadratically with sequence length.", "context_length")
+              "Attention cost grows quadratically with sequence length.",
+              "context_length")
 
     if config["method"] in ("lora", "qlora", "sft"):
         if config["lora_r"] > 256:
             issue("warning", "high_lora_r",
                   f"LoRA rank {config['lora_r']} is very high and behaves like full fine-tuning.",
-                  "Ranks of 8–64 cover most use cases.", "lora_r")
+                  "Ranks of 8–64 cover most use cases.",
+                  "lora_r")
         if config["lora_alpha"] < config["lora_r"] / 4:
             issue("warning", "low_alpha",
                   "LoRA alpha is low relative to rank, which weakens the adapter.",
-                  "A common convention is alpha = 2 × rank.", "lora_alpha")
+                  "A common convention is alpha = 2 × rank.",
+                  "lora_alpha")
 
     support = backend_support or {}
     for name, ready in support.items():
         if not ready:
             issue("error", "backend_unavailable",
                   f"The training backend for '{name}' is not available on this machine.",
-                  "Install the ML runtime in Settings → Environment.", "method")
+                  "Install the ML runtime in Settings → Environment.",
+                  "method")
             break
+
+    device = str(config.get("device") or "auto").lower()
+    if device == "cuda" and not cuda_ready:
+        issue("error", "cuda_requested_unavailable",
+              "CUDA was selected but no usable GPU was detected.",
+              "Check nvidia-smi, install the CUDA torch build, or switch device to CPU / Auto.",
+              "device")
+    elif device == "cpu" and cuda_ready:
+        issue("info", "cpu_selected_with_gpu",
+              "CPU was selected although a CUDA GPU is available.",
+              "That is a valid choice — CPU training is just far slower.",
+              "device")
 
     return issues
 
@@ -317,6 +352,13 @@ def baseline() -> dict[str, Any]:
         if field in config
     ]
     return {"config": config, "reasons": reasons}
+
+
+def _round_up_pow2(value: int) -> int:
+    power = 1
+    while power < value:
+        power *= 2
+    return max(64, power)
 
 
 def auto_configure(
@@ -374,9 +416,7 @@ def auto_configure(
         if prefer_quality and vram_gb >= 16:
             quant = "none"
 
-        method = "lora"
-        if quant == "4bit":
-            method = "lora"  # QLoRA stays an explicit choice; LoRA is the safer default.
+        method = "lora"  # QLoRA stays an explicit choice; LoRA is the safer default.
 
         patch.update({
             "method": method,
@@ -392,7 +432,8 @@ def auto_configure(
         reasons.append({
             "field": "batch_size",
             "value": batch,
-            "reason": f"Chosen for {vram_gb:.1f} GB of VRAM ({hardware.get('cuda', {}).get('devices', [{}])[0].get('name', 'GPU')}).",
+            "reason": f"Chosen for {vram_gb:.1f} GB of VRAM "
+                      f"({(hardware.get('cuda', {}).get('devices') or [{}])[0].get('name', 'GPU')}).",
         })
         reasons.append({
             "field": "gradient_accumulation",
@@ -424,8 +465,7 @@ def auto_configure(
                 "reason": "Trades some speed for a large drop in activation memory.",
             })
 
-    # Precision follows the device and the GPU's capabilities.
-    if cuda_ready:
+        # Precision follows the device and the GPU's capabilities.
         bf16_ok = bool(hardware.get("cuda", {}).get("bf16_supported"))
         precision = "bf16" if bf16_ok else "fp16"
         patch["precision"] = precision
@@ -439,9 +479,6 @@ def auto_configure(
         })
 
     patch["optimizer"] = "auto"
-
-    # From-scratch architecture values come from DEFAULTS; nothing here is
-    # hardware-tuned because there is no base model to size against.
 
     # Learning rate depends on how much of the model is actually being trained.
     method = patch.get("method", "lora")
@@ -503,10 +540,3 @@ def auto_configure(
 
     config = normalize({**DEFAULTS, **patch})
     return {"config": config, "reasons": reasons}
-
-
-def _round_up_pow2(value: int) -> int:
-    power = 1
-    while power < value:
-        power *= 2
-    return max(64, power)

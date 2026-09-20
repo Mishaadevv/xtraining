@@ -55,18 +55,20 @@ function register() {
 
   /* ---------------------------------------------------------------- app */
   ipcMain.handle("zeqou:app:info", wrap(() => ok({
-    name: app.getName(),
-    version: app.getVersion(),
-    platform: process.platform,
-    electron: process.versions.electron,
-    node: process.versions.node,
-    chrome: process.versions.chrome,
-    userData: dirs.root(),
-    runsDir: dirs.runs(),
-    modelsDir: dirs.models(),
-    hfCacheDir: dirs.hfCache(),
-    backendDir: pythonPackageDir(),
-    encryptionAvailable: store.encryptionAvailable(),
+    info: {
+      name: app.getName(),
+      version: app.getVersion(),
+      platform: process.platform,
+      electron: process.versions.electron,
+      node: process.versions.node,
+      chrome: process.versions.chrome,
+      userData: dirs.root(),
+      runsDir: dirs.runs(),
+      modelsDir: dirs.models(),
+      hfCacheDir: dirs.hfCache(),
+      backendDir: pythonPackageDir(),
+      encryptionAvailable: store.encryptionAvailable(),
+    },
   })));
 
   ipcMain.handle("zeqou:shell:openPath", wrap(async (target) => {
@@ -85,7 +87,7 @@ function register() {
     return ok();
   }));
 
-  /* ------------------------------------------------------------- dialogs */
+  /* ------------------------------------------------------------ dialogs */
   ipcMain.handle("zeqou:dialog:dataset", wrap(async () => {
     const result = await dialog.showOpenDialog({
       title: "Import dataset",
@@ -120,9 +122,9 @@ function register() {
     return ok({ paths: result.filePaths });
   }));
 
-  ipcMain.handle("zeqou:dialog:directory", wrap(async (_title) => {
+  ipcMain.handle("zeqou:dialog:directory", wrap(async (title) => {
     const result = await dialog.showOpenDialog({
-      title: _title || "Select a folder",
+      title: title || "Select a folder",
       properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || !result.filePaths.length) return { ok: true, paths: [] };
@@ -160,7 +162,7 @@ function register() {
     return ok({ settings: store.settings().get() });
   }));
 
-  /* ---------------------------------------------------------- environment */
+  /* --------------------------------------------------------- environment */
   ipcMain.handle("zeqou:env:detect", wrap(async (options = {}) => {
     if (options.force) {
       await python.resolve(true);
@@ -182,7 +184,10 @@ function register() {
     return ok({
       system,
       smi,
-      python: health,
+      python: health.python,
+      pythonPackageDir: health.packageDir,
+      backendPresent: health.backendPresent,
+      runtimeReady: health.ready,
       dependencies: backend ? backend.dependencies : null,
       hardware: backend ? backend.hardware : null,
       backends: backend ? backend.backends : null,
@@ -220,24 +225,21 @@ function register() {
   /*
    * ML runtime installation, redone from scratch.
    *
-   * The old approach pip-installed into whatever interpreter was selected —
-   * which fails quietly on Python 3.14 (no torch wheels exist for it yet) and
-   * duplicated the --index-url flag. The new approach is honest and isolated:
-   *
    *   1. A base interpreter is chosen (3.10–3.13 preferred, 3.14 refused with
    *      a readable reason instead of a pip wall of red).
    *   2. The app creates its OWN virtualenv under userData/venv, so the
    *      user's system Python is never touched.
    *   3. pip runs inside that venv; torch comes from the CUDA wheel index
    *      exactly once when a tag is configured.
-   *   4. The venv is saved in settings, and resolveInterpreterOrder puts it
-   *      first so every backend call uses it.
+   *   4. The venv is saved in settings, and the resolver puts it first so
+   *      every backend call uses it.
    */
   const { spawn: spawnInstall, execFile: execFileInstall } = require("node:child_process");
   let installChild = null;
+  let installing = false;
 
-  const VENV_MIN = [3, 10];
-  const VENV_MAX = [3, 13]; // torch ships no wheels for 3.14 yet — say so instead of failing obscurely
+  const VENV_MIN_MINOR = 10;
+  const VENV_MAX_MINOR = 13; // torch ships no wheels for 3.14 yet — say so instead of failing obscurely
 
   function parsePyVersion(versionString) {
     const match = String(versionString || "").match(/(\d+)\.(\d+)(?:\.(\d+))?/);
@@ -263,11 +265,12 @@ function register() {
     const usable = discovered.filter((entry) => entry.available && entry.info);
     const scored = usable.map((entry) => {
       const version = parsePyVersion(entry.info.version);
-      const ok = version && version.major === 3 && version.minor >= VENV_MIN[1] && version.minor <= VENV_MAX[1];
-      return { entry, version, ok };
+      const good = version && version.major === 3
+        && version.minor >= VENV_MIN_MINOR && version.minor <= VENV_MAX_MINOR;
+      return { entry, version, good };
     });
-    const good = scored.filter((item) => item.ok).sort((a, b) => b.version.minor - a.version.minor);
-    return good.length ? good[0].entry : null;
+    const fine = scored.filter((item) => item.good).sort((a, b) => b.version.minor - a.version.minor);
+    return fine.length ? fine[0].entry : null;
   }
 
   function venvPythonPath(venvDir) {
@@ -288,10 +291,7 @@ function register() {
     }
   }));
 
-  let installing = false;
-
   async function runRuntimeInstall() {
-
     const send = (payload) => emit("zeqou:runtime:install", payload);
     const base = await pickBaseInterpreter();
     if (!base) {
@@ -358,8 +358,8 @@ function register() {
     }
 
     // Verify inside the venv before declaring success: pip exit 0 with a
-    // half-broken environment used to report "done" and training failed later
-    // with missing_dependency. Never let that happen again.
+    // half-broken environment would report "done" and training would fail
+    // later with missing_dependency. Never let that happen.
     send({ phase: "output", line: "Verifying the installed packages…" });
     python.setInterpreter(venvPython);
     const check = await python.run(["env-check"]);
@@ -536,6 +536,7 @@ function register() {
     if (payload.config) args.push("--config", JSON.stringify(payload.config));
     if (payload.modelInfo) args.push("--model-info", JSON.stringify(payload.modelInfo));
     if (payload.availableVramMb) args.push("--available-vram", String(payload.availableVramMb));
+    if (payload.availableRamMb) args.push("--available-ram", String(payload.availableRamMb));
     const response = await python.run(args);
     if (!response.result) return { ok: false, error: response.error };
     return ok({ estimate: response.result });

@@ -21,7 +21,7 @@ import {
   Panel,
   PanelHeader,
 } from "@/components/ui/primitives";
-import type { Project, RunRecord, RunStatus } from "@/lib/types";
+import type { Project, RunRecord } from "@/lib/types";
 import { basename, formatDuration, formatLoss, formatRelative } from "@/lib/utils";
 import { useStore } from "@/state/store";
 import {
@@ -38,7 +38,7 @@ import {
   wizardSelectMethod,
 } from "@/state/appStore";
 
-const STATUS_TONE: Record<RunStatus, "good" | "warn" | "bad" | "neutral" | "accent"> = {
+const STATUS_TONE: Record<string, "good" | "warn" | "bad" | "neutral" | "accent"> = {
   completed: "good",
   running: "accent",
   starting: "accent",
@@ -47,12 +47,12 @@ const STATUS_TONE: Record<RunStatus, "good" | "warn" | "bad" | "neutral" | "acce
   stopped: "neutral",
 };
 
-function StatusBadge({ status }: { status: RunStatus | string | null }) {
+function StatusBadge({ status }: { status: string | null | undefined }) {
   if (!status) return <Badge>never run</Badge>;
-  const tone = STATUS_TONE[status as RunStatus] ?? "neutral";
+  const tone = STATUS_TONE[status] ?? "neutral";
   return (
     <Badge tone={tone}>
-      <Dot tone={tone === "accent" ? "accent" : tone === "neutral" ? "neutral" : tone} />
+      <Dot tone={tone === "accent" || tone === "neutral" ? tone : tone} />
       {status}
     </Badge>
   );
@@ -62,10 +62,10 @@ export function ProjectsPage() {
   const { projects, runs, env, busy } = useStore(appStore);
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
 
-  const startFromProject = async (project: Project) => {
+  const trainAgain = async (project: Project) => {
     resetWizard({
       projectId: project.id,
-      projectName: project.name,
+      runName: `${project.name}-again`,
       method: project.method ?? "lora",
       baseModel: project.baseModel ?? "",
       datasetId: project.datasetPath
@@ -73,8 +73,8 @@ export function ProjectsPage() {
         : null,
     });
     navigate("new");
-    if (project.method) await wizardSelectMethod(project.method);
     if (project.baseModel) await wizardSelectModel(project.baseModel, null);
+    if (project.method) await wizardSelectMethod(project.method);
     const datasetId = appStore.get().wizard.datasetId;
     if (datasetId) await wizardSelectDataset(datasetId);
   };
@@ -87,7 +87,7 @@ export function ProjectsPage() {
         subtitle={
           projects.length
             ? `${projects.length} project${projects.length === 1 ? "" : "s"} · ${runs.length} run${runs.length === 1 ? "" : "s"} recorded`
-            : "Each training configuration becomes a project with its own run history"
+            : "Every training configuration becomes a project with its own run history"
         }
         actions={
           <>
@@ -95,7 +95,7 @@ export function ProjectsPage() {
               size="sm"
               variant="quiet"
               icon={<RefreshCw className="h-3.5 w-3.5" />}
-              loading={busy.refresh}
+              busy={Boolean(busy.refresh)}
               onClick={() => {
                 void refreshProjects();
                 void refreshRuns();
@@ -130,7 +130,7 @@ export function ProjectsPage() {
               </Button>
             }
           >
-            Training will run on the CPU, which is very slow. {env.hardware.cuda_blockers[0] ?? ""}
+            Training will fall back to the CPU, which is very slow. {env.hardware.cuda_blockers[0] ?? ""}
           </Note>
         ) : null}
 
@@ -148,7 +148,7 @@ export function ProjectsPage() {
                   navigate("new");
                 }}
               >
-                Create your first project
+                Create the first project
               </Button>
             }
           />
@@ -162,8 +162,8 @@ export function ProjectsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="truncate text-[13.5px] font-semibold">{project.name}</h3>
-                      <p className="mt-0.5 truncate text-[11.5px] text-[var(--text-3)]">
-                        {project.baseModel ?? "no base model"} · {basename(project.datasetPath) || "no dataset"}
+                      <p className="zq-mono mt-0.5 truncate text-[11px] text-[var(--text-3)]">
+                        {project.baseModel || "no base model"} · {basename(project.datasetPath) || "no dataset"}
                       </p>
                     </div>
                     <StatusBadge status={project.lastStatus} />
@@ -193,12 +193,12 @@ export function ProjectsPage() {
                         void selectRun(lastRun.id);
                         navigate("training");
                       }}
-                      className="mt-3 flex items-center gap-2 rounded-[10px] border border-[var(--border-soft)] bg-[var(--panel-2)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--hover)]"
+                      className="mt-3 flex items-center gap-2.5 rounded-[10px] border border-[var(--border-soft)] bg-[var(--panel-2)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--hover)]"
                     >
                       <Activity className="h-3.5 w-3.5 shrink-0 text-[var(--text-3)]" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[12px]">{lastRun.name}</span>
-                        <span className="zq-mono block text-[10.5px] text-[var(--text-3)]">
+                        <span className="zq-mono block truncate text-[10.5px] text-[var(--text-3)]">
                           {lastRun.method} · loss {formatLoss(lastRun.finalLoss ?? lastRun.loss)} ·{" "}
                           {formatDuration(lastRun.elapsedSeconds)}
                         </span>
@@ -208,7 +208,7 @@ export function ProjectsPage() {
                   ) : null}
 
                   <div className="mt-3 flex items-center gap-2 border-t border-[var(--border-soft)] pt-3">
-                    <Button size="sm" icon={<Play className="h-3.5 w-3.5" />} onClick={() => void startFromProject(project)}>
+                    <Button size="sm" icon={<Play className="h-3.5 w-3.5" />} onClick={() => void trainAgain(project)}>
                       Train again
                     </Button>
                     {project.datasetPath ? (
@@ -243,9 +243,7 @@ export function ProjectsPage() {
               description="Every training run this machine has produced, newest first."
             />
             {runs.length === 0 ? (
-              <p className="py-4 text-center text-[12.5px] text-[var(--text-3)]">
-                No runs recorded yet.
-              </p>
+              <p className="py-4 text-center text-[12.5px] text-[var(--text-3)]">No runs recorded yet.</p>
             ) : (
               <div className="-mx-1 overflow-x-auto">
                 <table className="w-full min-w-[720px] border-collapse">
@@ -309,7 +307,7 @@ export function ProjectsPage() {
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         title="Delete this project?"
-        description="The project grouping is removed. Its runs stay in the history and the trained model files are not touched."
+        description="The project grouping is removed. Its runs stay in history and no model files are touched."
         confirmLabel="Delete project"
         onConfirm={() => {
           if (pendingDelete) void removeProject(pendingDelete.id);

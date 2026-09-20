@@ -31,9 +31,8 @@ import {
   Segmented,
   Switch,
 } from "@/components/ui/primitives";
-import type { ModelEntry } from "@/lib/types";
+import type { ModelEntry, ModelExportInfo } from "@/lib/types";
 import { formatBytes, formatCount, formatLoss, formatRelative } from "@/lib/utils";
-import type { ModelExportInfo } from "@/lib/bridge";
 import { useStore } from "@/state/store";
 import {
   addModel,
@@ -138,7 +137,7 @@ function ModelRow({
             icon={<Play className="h-3.5 w-3.5" />}
             disabled={!model.trainable}
             onClick={() => {
-              resetWizard({ modelEntryId: model.id, baseModel: model.source });
+              resetWizard({ baseModel: model.source, baseModelEntryId: model.id });
               void wizardSelectModel(model.source, model.id);
               navigate("new");
             }}

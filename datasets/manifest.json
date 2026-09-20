@@ -1,0 +1,205 @@
+{
+  "note": "Datasets shipped inside ZeqouXTraining. The registry lists them as built-in; the entry marked default is used when no dataset has been selected.",
+  "datasets": [
+    {
+      "file": "dataset_v2.json",
+      "name": "Zeqou Default v2 — translation + thinking (EN→RU)",
+      "records": 12316,
+      "lang": "EN→RU",
+      "thinking": true,
+      "default": true
+    },
+    {
+      "file": "dataset.json",
+      "name": "Zeqou Default v1 — translation pairs (EN→RU)",
+      "records": 3566,
+      "lang": "EN→RU",
+      "thinking": false,
+      "default": false
+    },
+    {
+      "file": "parts/dialog_ru_en_1.json",
+      "name": "Dialogue — Russian ↔ English",
+      "records": 550,
+      "lang": "RU/EN",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/dialog_es_fr_2.json",
+      "name": "Dialogue — Spanish ↔ French",
+      "records": 550,
+      "lang": "ES/FR",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/dialog_de_zh_3.json",
+      "name": "Dialogue — German ↔ Chinese",
+      "records": 550,
+      "lang": "DE/ZH",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/dialog_ja_mix_4.json",
+      "name": "Dialogue — Japanese & mixed",
+      "records": 400,
+      "lang": "JA/mix",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/code_python_5.json",
+      "name": "Code — Python",
+      "records": 500,
+      "lang": "code",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/code_jvm_6.json",
+      "name": "Code — JVM",
+      "records": 500,
+      "lang": "code",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/code_web_7.json",
+      "name": "Code — Web",
+      "records": 500,
+      "lang": "code",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/code_sys_8.json",
+      "name": "Code — Systems",
+      "records": 500,
+      "lang": "code",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/code_ops_9.json",
+      "name": "Code — Ops & CLI",
+      "records": 500,
+      "lang": "code",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/sci_math_10.json",
+      "name": "Science — Math",
+      "records": 600,
+      "lang": "sci",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/sci_phys_11.json",
+      "name": "Science — Physics",
+      "records": 600,
+      "lang": "sci",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/sci_school_12.json",
+      "name": "Science — School",
+      "records": 550,
+      "lang": "sci",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/sci_cs_13.json",
+      "name": "Science — Computer Science",
+      "records": 550,
+      "lang": "sci",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/tech_mcp_14.json",
+      "name": "Tech — MCP",
+      "records": 500,
+      "lang": "tech",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/tech_tools_15.json",
+      "name": "Tech — Tools",
+      "records": 500,
+      "lang": "tech",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/tech_info_16.json",
+      "name": "Tech — Info & DevOps",
+      "records": 600,
+      "lang": "tech",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "parts/external_17.json",
+      "name": "External scenarios (multi-language)",
+      "records": 300,
+      "lang": "mix",
+      "thinking": true,
+      "default": false
+    },
+    {
+      "file": "v1add/d1_ru_500.json",
+      "name": "Zeqou v1 add-on — Russian",
+      "records": 500,
+      "lang": "RU",
+      "thinking": false,
+      "default": false
+    },
+    {
+      "file": "v1add/d2_en_500.json",
+      "name": "Zeqou v1 add-on — English",
+      "records": 500,
+      "lang": "EN",
+      "thinking": false,
+      "default": false
+    },
+    {
+      "file": "v1add/d3_es_500.json",
+      "name": "Zeqou v1 add-on — Spanish",
+      "records": 457,
+      "lang": "ES",
+      "thinking": false,
+      "default": false
+    },
+    {
+      "file": "v1add/d4_fr_500.json",
+      "name": "Zeqou v1 add-on — French",
+      "records": 500,
+      "lang": "FR",
+      "thinking": false,
+      "default": false
+    },
+    {
+      "file": "v1add/d5_de_500.json",
+      "name": "Zeqou v1 add-on — German",
+      "records": 500,
+      "lang": "DE",
+      "thinking": false,
+      "default": false
+    },
+    {
+      "file": "v1add/d7_ja_500.json",
+      "name": "Zeqou v1 add-on — Japanese",
+      "records": 500,
+      "lang": "JA",
+      "thinking": false,
+      "default": false
+    }
+  ]
+}

@@ -14,14 +14,14 @@ export function formatBytes(bytes: number | null | undefined, digits = 1): strin
     value /= 1024;
     unit += 1;
   }
-  const fixed = unit === 0 ? 0 : digits;
-  return `${value.toFixed(fixed)} ${units[unit]}`;
+  return `${value.toFixed(unit === 0 ? 0 : digits)} ${units[unit]}`;
 }
 
 export function formatCount(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 10_000) return `${(value / 1_000).toFixed(0)}k`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
   return String(value);
 }
@@ -42,14 +42,15 @@ export function formatLoss(value: number | null | undefined): string {
   return value.toFixed(4);
 }
 
-export function formatRate(value: number | null | undefined, digits = 2): string {
-  if (value == null || Number.isNaN(value)) return "—";
-  return value.toFixed(digits);
-}
-
-export function formatPercent(value: number | null | undefined, digits = 1): string {
+export function formatPercent(value: number | null | undefined, digits = 0): string {
   if (value == null || Number.isNaN(value)) return "—";
   return `${value.toFixed(digits)}%`;
+}
+
+export function formatRate(value: number | null | undefined, digits = 1): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  if (value >= 100) return value.toFixed(0);
+  return value.toFixed(digits);
 }
 
 export function formatLearningRate(value: number | null | undefined): string {
@@ -58,9 +59,9 @@ export function formatLearningRate(value: number | null | undefined): string {
   return value.toExponential(2).replace("e-", "e−");
 }
 
-export function formatDateTime(value: number | string | null | undefined): string {
-  if (value == null) return "—";
-  const date = typeof value === "number" ? new Date(value) : new Date(value);
+export function formatDateTime(value: number | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString(undefined, {
     year: "numeric",
@@ -74,6 +75,7 @@ export function formatDateTime(value: number | string | null | undefined): strin
 export function formatRelative(value: number | null | undefined): string {
   if (!value) return "—";
   const delta = Date.now() - value;
+  if (delta < 0) return "just now";
   if (delta < 60_000) return "just now";
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
   if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`;
@@ -99,4 +101,18 @@ export function downsample<T>(items: T[], target: number): T[] {
     output.push(items[Math.floor(index * step)]);
   }
   return output;
+}
+
+/** Human label for a dataset validation status. */
+export function statusLabel(status: string): string {
+  switch (status) {
+    case "ok":
+      return "clean";
+    case "warnings":
+      return "warnings";
+    case "errors":
+      return "errors";
+    default:
+      return "unvalidated";
+  }
 }

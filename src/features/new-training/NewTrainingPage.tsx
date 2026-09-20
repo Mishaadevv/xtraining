@@ -10,8 +10,8 @@ import {
   Play,
   Rocket,
   Settings2,
-  Sparkles,
   Sliders,
+  Sparkles,
   Wand2,
 } from "lucide-react";
 
@@ -67,27 +67,32 @@ const METHOD_BLURB: Record<Method, { label: string; summary: string; detail: str
   lora: {
     label: "LoRA",
     summary: "Train small adapters, keep the base model frozen",
-    detail: "The default choice. Produces a few megabytes instead of gigabytes, trains fastest, and rarely destabilises the base model.",
+    detail:
+      "The default choice. Produces a few megabytes instead of gigabytes, trains fastest, and rarely destabilises the base model.",
   },
   qlora: {
     label: "QLoRA",
     summary: "LoRA over a 4-bit quantized base model",
-    detail: "Fits models that would otherwise run out of VRAM. Needs bitsandbytes and an NVIDIA GPU. Costs some speed per step.",
+    detail:
+      "Fits models that would otherwise run out of VRAM. Needs bitsandbytes and an NVIDIA GPU. Costs some speed per step.",
   },
   sft: {
     label: "SFT",
     summary: "Instruction tuning over chat-formatted data",
-    detail: "Uses the same adapter engine but applies the model's chat template to message-style datasets, teaching assistant behaviour.",
+    detail:
+      "Uses the same adapter engine but applies the model's chat template to message-style datasets, teaching assistant behaviour.",
   },
   full: {
     label: "Full fine-tune",
     summary: "Update every weight of the base model",
-    detail: "Highest capacity and highest cost. Optimizer state alone needs roughly two extra fp32 copies of the model.",
+    detail:
+      "Highest capacity and highest cost. Optimizer state alone needs roughly two extra fp32 copies of the model.",
   },
   scratch: {
     label: "From scratch",
     summary: "Train a fresh model from random weights — no base model",
-    detail: "Builds a small transformer and trains it on your dataset only. Nothing is downloaded. Needs much more data than fine-tuning to become good; best for tiny domain models and experiments.",
+    detail:
+      "Builds a small transformer and trains it on your dataset only. Nothing is downloaded. Needs much more data than fine-tuning; best for tiny domain models and experiments.",
   },
 };
 
@@ -176,11 +181,14 @@ export function NewTrainingPage() {
       await wizardSelectDataset(entry.id);
     }
   };
+
   const methodAvailable = (method: Method): { ok: boolean; reason?: string } => {
-    // From scratch runs on its own backend, which needs no peft.
     const backend = env.backends?.find((entry) => entry.name === (method === "scratch" ? "scratch" : "hf-peft"));
     if (backend && !backend.available) {
-      return { ok: false, reason: `Needs: ${backend.missing.join(", ") || "the ML runtime"}. Install it in Settings → Environment.` };
+      return {
+        ok: false,
+        reason: `Needs: ${backend.missing.join(", ") || "the ML runtime"}. Install it in Settings → Environment.`,
+      };
     }
     if (method === "qlora" && !env.hardware?.cuda_ready) {
       return { ok: false, reason: "QLoRA needs an NVIDIA GPU with CUDA. This machine has no usable CUDA device." };
@@ -200,21 +208,36 @@ export function NewTrainingPage() {
     }
   }, [wizard.step, config, wizard.baseModel, wizard.datasetId]);
 
+  // The built-in default dataset stands selected until the user picks their
+  // own — quietly, without spawning the Python backend before they ask.
+  useEffect(() => {
+    if (wizard.datasetId) return;
+    const fallback = datasets.find((dataset) => dataset.builtin && dataset.default);
+    if (fallback) void wizardSelectDataset(fallback.id, { validate: false });
+  }, [datasets, wizard.datasetId]);
+
   const blockers = useMemo(() => {
     const list: { title: string; detail: string; tone: "warn" | "bad" }[] = [];
     if (!trainingReady) {
       list.push({
         title: "The ML runtime is not installed",
-        detail: "PyTorch and friends are missing, so no training can run yet. Settings → Environment generates the exact install command.",
+        detail:
+          "PyTorch and friends are missing, so no training can run yet. Settings → Environment generates the exact install command.",
         tone: "bad",
       });
     }
-    // From scratch is the one method with no base model.
     if (!wizard.baseModel && wizard.method !== "scratch") {
       list.push({ title: "No base model selected", detail: "Pick a model in step 1.", tone: "bad" });
     }
     if (!datasetPath) {
-      list.push({ title: "No dataset selected", detail: "Pick a dataset in step 2.", tone: "bad" });
+      const fallback = datasets.find((dataset) => dataset.builtin && dataset.default);
+      list.push({
+        title: "No dataset selected",
+        detail: fallback
+          ? `The built-in default “${fallback.name}” will be used.`
+          : "Import a dataset or pick a built-in one in step 2.",
+        tone: fallback ? "warn" : "bad",
+      });
     }
     if (wizard.datasetReport && wizard.datasetReport.status === "errors") {
       list.push({
@@ -248,10 +271,10 @@ export function NewTrainingPage() {
       });
     }
     return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainingReady, wizard.baseModel, wizard.datasetId, wizard.datasetReport, wizard.method, wizard.estimate, cudaReady, datasetPath, env.hardware, env.backends]);
 
   const fatal = blockers.some((blocker) => blocker.tone === "bad");
-
   const step = wizard.step;
   const setStep = (next: number) => setWizard({ step: Math.max(0, Math.min(STEPS.length - 1, next)) });
 
@@ -263,8 +286,8 @@ export function NewTrainingPage() {
         subtitle="Model → Dataset → Method → Settings → Check → Train"
         actions={
           <>
-            <Button size="sm" variant="ghost" onClick={() => resetWizard({ step: step, projectId: wizard.projectId, projectName: wizard.projectName })}>
-              Reset choices
+            <Button size="sm" variant="ghost" onClick={() => resetWizard()}>
+              Reset
             </Button>
             <Button
               size="sm"
@@ -364,7 +387,9 @@ export function NewTrainingPage() {
                           </div>
                           <p className="mt-1 text-[11px] text-[var(--text-3)]">
                             {model.method?.toUpperCase() ?? "trained"} · loss {model.finalLoss?.toFixed(3) ?? "—"}
-                            {model.adapter ? " · LoRA adapter — it is merged into the weights and a new one is trained on top" : " · full model"}
+                            {model.adapter
+                              ? " · LoRA adapter — merged into the weights, a new one is trained on top"
+                              : " · full model"}
                           </p>
                         </button>
                       );
@@ -376,7 +401,7 @@ export function NewTrainingPage() {
             <div className="mt-4 border-t border-[var(--border-soft)] pt-3">
               <Field
                 label="Or enter a model source"
-                hint="Hugging Face id (owner/name), an absolute path to a folder with config.json, or a trained model folder — a LoRA-adapter folder is merged into its base weights and training continues from there."
+                hint="Hugging Face id (owner/name), an absolute path to a folder with config.json, or a trained model folder — an adapter folder is merged into its base weights and training continues from there."
               >
                 <div className="flex gap-2">
                   <Input
@@ -384,14 +409,14 @@ export function NewTrainingPage() {
                     placeholder="Qwen/Qwen2.5-0.5B-Instruct"
                     onChange={(event) => setWizard({ baseModel: event.target.value })}
                     onBlur={() => {
-                      if (wizard.baseModel) void wizardSelectModel(wizard.baseModel, wizard.modelEntryId);
+                      if (wizard.baseModel) void wizardSelectModel(wizard.baseModel, wizard.baseModelEntryId);
                     }}
                   />
                   <Button
                     variant="secondary"
                     loading={busy.inspectModel}
                     disabled={!wizard.baseModel.trim()}
-                    onClick={() => void wizardSelectModel(wizard.baseModel, wizard.modelEntryId)}
+                    onClick={() => void wizardSelectModel(wizard.baseModel, wizard.baseModelEntryId)}
                   >
                     Inspect
                   </Button>
@@ -403,19 +428,37 @@ export function NewTrainingPage() {
 
               {wizard.modelInfo ? (
                 <div className="mt-3 grid grid-cols-2 gap-x-6 sm:grid-cols-4">
-                  <KeyValue label="Parameters" value={wizard.modelInfo.params ? formatCount(Number(wizard.modelInfo.params)) : "unknown"} />
-                  <KeyValue label="Architecture" value={(wizard.modelInfo.architecture as string) ?? (wizard.modelInfo.fields as any)?.architectures?.[0] ?? "—"} />
+                  <KeyValue
+                    label="Parameters"
+                    value={wizard.modelInfo.params ? formatCount(Number(wizard.modelInfo.params)) : "unknown"}
+                  />
+                  <KeyValue
+                    label="Architecture"
+                    value={
+                      wizard.modelInfo.fields?.architectures?.[0] ??
+                      (typeof wizard.modelInfo.fields?.model_type === "string"
+                        ? wizard.modelInfo.fields.model_type
+                        : "—")
+                    }
+                  />
                   <KeyValue
                     label="Max context"
-                    value={wizard.modelInfo.max_position_embeddings ? formatCount(Number(wizard.modelInfo.max_position_embeddings)) : "—"}
+                    value={
+                      wizard.modelInfo.max_position_embeddings
+                        ? formatCount(Number(wizard.modelInfo.max_position_embeddings))
+                        : "—"
+                    }
                   />
-                  <KeyValue label="Stored dtype" value={((wizard.modelInfo.fields as any)?.torch_dtype as string) ?? "—"} />
+                  <KeyValue
+                    label="Stored dtype"
+                    value={typeof wizard.modelInfo.fields?.torch_dtype === "string" ? wizard.modelInfo.fields.torch_dtype : "—"}
+                  />
                 </div>
               ) : null}
-              {wizard.autoIssue ? (
+              {wizard.note ? (
                 <div className="mt-3">
                   <Note tone="warn" title="Could not inspect this model">
-                    {wizard.autoIssue.message}
+                    {wizard.note.message}
                   </Note>
                 </div>
               ) : null}
@@ -452,6 +495,8 @@ export function NewTrainingPage() {
                 {datasets.map((dataset) => {
                   const active = wizard.datasetId === dataset.id;
                   const report = active ? wizard.datasetReport ?? dataset.report : dataset.report;
+                  const statusTone =
+                    dataset.status === "ok" ? "good" : dataset.status === "errors" ? "bad" : dataset.status === "warnings" ? "warn" : "neutral";
                   return (
                     <button
                       key={dataset.id}
@@ -467,28 +512,9 @@ export function NewTrainingPage() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-[12.5px] font-medium">{dataset.name}</span>
                         <span className="flex shrink-0 items-center gap-2">
-                          <Badge
-                            tone={
-                              dataset.status === "ok"
-                                ? "good"
-                                : dataset.status === "errors"
-                                  ? "bad"
-                                  : dataset.status === "warnings"
-                                    ? "warn"
-                                    : "neutral"
-                            }
-                          >
-                            <Dot
-                              tone={
-                                dataset.status === "ok"
-                                  ? "good"
-                                  : dataset.status === "errors"
-                                    ? "bad"
-                                    : dataset.status === "warnings"
-                                      ? "warn"
-                                      : "neutral"
-                              }
-                            />
+                          {dataset.builtin ? <Badge tone="info">built-in</Badge> : null}
+                          <Badge tone={statusTone}>
+                            <Dot tone={statusTone} />
                             {dataset.status}
                           </Badge>
                           {active ? <Badge tone="accent">selected</Badge> : null}
@@ -497,13 +523,12 @@ export function NewTrainingPage() {
                       <p className="zq-mono mt-0.5 truncate text-[10.5px] text-[var(--text-3)]">{dataset.path}</p>
                       <p className="mt-1 text-[11.5px] text-[var(--text-2)]">
                         {formatCount(report?.stats?.usable ?? dataset.usable)} usable of{" "}
-                        {formatCount(report?.stats?.records ?? dataset.records)} records ·{" "}
-                        {formatBytes(dataset.sizeBytes)} · {report?.mapping?.kind ?? dataset.mapping?.kind ?? "unmapped"}
+                        {formatCount(report?.stats?.records ?? dataset.records)} records · {formatBytes(dataset.sizeBytes)} ·{" "}
+                        {report?.mapping?.kind ?? dataset.mapping?.kind ?? "unmapped"}
                       </p>
                       {report?.issues?.length ? (
                         <p className="mt-1 truncate text-[11px] text-[var(--text-3)]">
-                          {report.issues.length} finding{report.issues.length === 1 ? "" : "s"}:{" "}
-                          {report.issues[0].message}
+                          {report.issues.length} finding{report.issues.length === 1 ? "" : "s"}: {report.issues[0].message}
                         </p>
                       ) : null}
                     </button>
@@ -554,13 +579,7 @@ export function NewTrainingPage() {
                     spellCheck={false}
                     aria-label="Split"
                   />
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    loading={busy.importDataset}
-                    disabled={!hfId.trim()}
-                    onClick={() => void addHubDataset()}
-                  >
+                  <Button size="sm" variant="primary" loading={busy.importDataset} disabled={!hfId.trim()} onClick={() => void addHubDataset()}>
                     Add
                   </Button>
                 </div>
@@ -615,7 +634,7 @@ export function NewTrainingPage() {
                 description={
                   autoConfigure
                     ? "Simple mode exposes the settings that matter most; everything else is derived from your hardware."
-                    : "Automatic configuration is off in Settings → Advanced, so these are the documented defaults rather than values chosen for this machine."
+                    : "Automatic configuration is off in Settings, so these are documented defaults rather than values chosen for this machine."
                 }
                 actions={
                   <Segmented
@@ -635,15 +654,13 @@ export function NewTrainingPage() {
                   {[0, 1, 2].map((index) => (
                     <div key={index} className="zq-skeleton h-10" />
                   ))}
-                  <p className="text-center text-[12px] text-[var(--text-3)]">
-                    Choosing safe parameters for your hardware…
-                  </p>
+                  <p className="text-center text-[12px] text-[var(--text-3)]">Choosing safe parameters for your hardware…</p>
                 </div>
               ) : (
                 <ConfigForm
                   config={config}
                   simple={wizard.simple}
-                  reasons={wizard.autoReasons}
+                  reasons={wizard.reasons}
                   onChange={(patch) => {
                     updateWizardConfig(patch);
                     void refreshWizardEstimate();
@@ -651,14 +668,6 @@ export function NewTrainingPage() {
                 />
               )}
             </Panel>
-
-            {config && !autoConfigure ? (
-              <Note tone="warn" title="These values were not tuned to your hardware">
-                Automatic configuration is disabled, so this is the documented starting point. Set the
-                context length and batch size to something your hardware can hold — or press
-                Auto-configure above to derive them from this machine.
-              </Note>
-            ) : null}
 
             {config ? (
               <Panel>
@@ -671,18 +680,17 @@ export function NewTrainingPage() {
                       : "Where these defaults come from — nothing here was measured on this machine."
                   }
                 />
-                {wizard.autoReasons.length === 0 ? (
+                {wizard.reasons.length === 0 ? (
                   <p className="text-[12.5px] text-[var(--text-3)]">
                     No automatic reasoning is available yet — select a model or dataset first.
                   </p>
                 ) : (
                   <div className="space-y-1.5">
-                    {wizard.autoReasons.map((reason, index) => (
+                    {wizard.reasons.map((reason, index) => (
                       <div key={index} className="flex items-start gap-2.5">
                         <Badge tone="accent">{reason.field}</Badge>
                         <p className="min-w-0 flex-1 text-[12px] leading-[18px] text-[var(--text-2)]">
-                          {reason.reason}{" "}
-                          <span className="zq-mono text-[var(--text-3)]">= {String(reason.value)}</span>
+                          {reason.reason} <span className="zq-mono text-[var(--text-3)]">= {String(reason.value)}</span>
                         </p>
                       </div>
                     ))}
@@ -709,8 +717,7 @@ export function NewTrainingPage() {
               />
               {blockers.length === 0 ? (
                 <Note tone="good" title="Ready to train">
-                  The dataset is valid, the method is available on this hardware, and the estimated
-                  memory fits.
+                  The dataset is valid, the method is available on this hardware, and the estimated memory fits.
                 </Note>
               ) : (
                 <div className="space-y-2">
@@ -737,36 +744,29 @@ export function NewTrainingPage() {
                       </span>
                     </div>
                     <ProgressBar
-                      value={wizard.estimate.available_vram_mb ? ((wizard.estimate.estimated_total_mb ?? 0) / wizard.estimate.available_vram_mb) * 100 : 0}
-                      tone={
-                        wizard.estimate.verdict === "exceeds"
-                          ? "bad"
-                          : wizard.estimate.verdict === "tight"
-                            ? "warn"
-                            : "good"
+                      value={
+                        wizard.estimate.available_vram_mb
+                          ? ((wizard.estimate.estimated_total_mb ?? 0) / wizard.estimate.available_vram_mb) * 100
+                          : 0
                       }
+                      tone={wizard.estimate.verdict === "exceeds" ? "bad" : wizard.estimate.verdict === "tight" ? "warn" : "good"}
                     />
-                    <div className="mt-3 space-y-0">
+                    <div className="mt-3">
                       <KeyValue label="Weights" value={`${((wizard.estimate.weights_mb ?? 0) / 1024).toFixed(2)} GB`} />
                       <KeyValue label="Optimizer state" value={`${((wizard.estimate.optimizer_mb ?? 0) / 1024).toFixed(2)} GB`} />
                       <KeyValue label="Gradients" value={`${((wizard.estimate.gradients_mb ?? 0) / 1024).toFixed(2)} GB`} />
                       <KeyValue label="Activations" value={`${((wizard.estimate.activations_mb ?? 0) / 1024).toFixed(2)} GB`} />
                       <KeyValue label="Runtime overhead" value={`${((wizard.estimate.overhead_mb ?? 0) / 1024).toFixed(2)} GB`} />
-                      <KeyValue
-                        label="Trainable parameters"
-                        value={formatCount(wizard.estimate.trainable_params ?? null)}
-                      />
+                      <KeyValue label="Trainable parameters" value={formatCount(wizard.estimate.trainable_params ?? null)} />
                     </div>
                     <p className="mt-2 text-[11px] leading-[17px] text-[var(--text-3)]">
-                      Approximate — attention kernels, the MLP ratio and fragmentation all shift the real
-                      figure. Plausible range {( (wizard.estimate.range_low_mb ?? 0) / 1024).toFixed(1)}–
+                      Approximate — attention kernels, the MLP ratio and fragmentation all shift the real figure. Plausible
+                      range {((wizard.estimate.range_low_mb ?? 0) / 1024).toFixed(1)}–
                       {((wizard.estimate.range_high_mb ?? 0) / 1024).toFixed(1)} GB.
                     </p>
                     {wizard.estimate.suggestions?.length ? (
                       <div className="mt-3">
-                        <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">
-                          Suggestions
-                        </p>
+                        <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">Suggestions</p>
                         <ul className="space-y-1">
                           {wizard.estimate.suggestions.map((suggestion, index) => (
                             <li key={index} className="flex items-start gap-2 text-[11.5px] leading-[17px] text-[var(--text-2)]">
@@ -787,16 +787,13 @@ export function NewTrainingPage() {
 
               <Panel>
                 <PanelHeader icon={<Database className="h-4 w-4" />} title="Dataset & configuration" />
-                <div className="space-y-0">
+                <div>
                   <KeyValue label="Dataset" value={datasetEntry?.name ?? "—"} />
                   <KeyValue label="Records" value={formatCount(wizard.datasetReport?.stats?.records ?? null)} />
                   <KeyValue label="Usable samples" value={formatCount(wizard.datasetReport?.stats?.usable ?? null)} />
                   <KeyValue label="Mapping" value={wizard.datasetReport?.mapping?.kind ?? "—"} />
                   <KeyValue label="Epochs" value={config?.epochs ?? "—"} />
-                  <KeyValue
-                    label="Effective batch"
-                    value={config ? config.batch_size * config.gradient_accumulation : "—"}
-                  />
+                  <KeyValue label="Effective batch" value={config ? config.batch_size * config.gradient_accumulation : "—"} />
                   <KeyValue label="Context length" value={config?.context_length ?? "—"} />
                   <KeyValue label="Precision" value={config?.precision ?? "—"} />
                   <KeyValue label="Device" value={env.hardware?.training_device ?? "—"} />
@@ -824,9 +821,7 @@ export function NewTrainingPage() {
                       <Badge tone={issue.severity === "error" ? "bad" : "warn"}>{issue.severity}</Badge>
                       <div className="min-w-0 flex-1">
                         <p className="text-[12.5px] leading-[18px]">{issue.message}</p>
-                        {issue.hint ? (
-                          <p className="text-[11.5px] leading-[17px] text-[var(--text-2)]">{issue.hint}</p>
-                        ) : null}
+                        {issue.hint ? <p className="text-[11.5px] leading-[17px] text-[var(--text-2)]">{issue.hint}</p> : null}
                       </div>
                     </div>
                   ))}
@@ -847,16 +842,23 @@ export function NewTrainingPage() {
               />
               <Field label="Run name" hint="Saved under the app data folder, alongside history and GPU telemetry.">
                 <Input
-                  value={wizard.projectName}
+                  value={wizard.runName}
                   placeholder="my-model-finetune"
-                  onChange={(event) => setWizard({ projectName: event.target.value })}
+                  onChange={(event) => setWizard({ runName: event.target.value })}
                 />
               </Field>
 
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <Stat label="Method" value={config?.method ?? wizard.method} />
                 <Stat label="Epochs" value={config?.epochs ?? "—"} />
-                <Stat label="Steps / epoch" value={config ? Math.max(1, Math.ceil((wizard.datasetReport?.stats?.usable ?? 0) / (config.batch_size * config.gradient_accumulation))) : "—"} />
+                <Stat
+                  label="Steps / epoch"
+                  value={
+                    config
+                      ? Math.max(1, Math.ceil((wizard.datasetReport?.stats?.usable ?? 0) / (config.batch_size * config.gradient_accumulation)))
+                      : "—"
+                  }
+                />
                 <Stat label="Eta" value="after start" />
               </div>
 
@@ -865,7 +867,7 @@ export function NewTrainingPage() {
                   variant="primary"
                   size="lg"
                   icon={<Play className="h-4 w-4" />}
-                  loading={busy.startTraining}
+                  loading={busy.start}
                   disabled={fatal || !config}
                   onClick={() => void startTraining()}
                 >
@@ -894,12 +896,7 @@ export function NewTrainingPage() {
         ) : null}
 
         <div className="mt-4 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            icon={<ArrowLeft className="h-3.5 w-3.5" />}
-            disabled={step === 0}
-            onClick={() => setStep(step - 1)}
-          >
+          <Button variant="ghost" icon={<ArrowLeft className="h-3.5 w-3.5" />} disabled={step === 0} onClick={() => setStep(step - 1)}>
             Back
           </Button>
           <div className="flex items-center gap-2">
@@ -909,11 +906,7 @@ export function NewTrainingPage() {
                 {blockers.filter((blocker) => blocker.tone === "bad").length} blocking
               </Badge>
             ) : null}
-            <Button
-              variant="secondary"
-              disabled={step === STEPS.length - 1}
-              onClick={() => setStep(step + 1)}
-            >
+            <Button variant="secondary" disabled={step === STEPS.length - 1} onClick={() => setStep(step + 1)}>
               Continue
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
@@ -989,10 +982,7 @@ function ConfigForm({
       {config.method === "scratch" ? (
         <div className="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-[var(--border-soft)] pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Model size" hint="Named presets; every value below can be overridden.">
-            <Select
-              value={config.scratch_size ?? "tiny"}
-              onChange={(event) => onChange({ scratch_size: event.target.value })}
-            >
+            <Select value={config.scratch_size ?? "tiny"} onChange={(event) => onChange({ scratch_size: event.target.value })}>
               <option value="micro">micro (~3M params)</option>
               <option value="tiny">tiny (~10M params)</option>
               <option value="small">small (~25M params)</option>
@@ -1098,11 +1088,19 @@ function ConfigForm({
 
       {!simple ? (
         <div className="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-[var(--border-soft)] pt-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Precision" hint={auto("precision")}>
+          <Field label="Device" hint="Where the run executes — CUDA forces the GPU, CPU is always available.">
             <Select
-              value={config.precision}
-              onChange={(event) => onChange({ precision: event.target.value as Precision })}
+              value={config.device}
+              onChange={(event) => onChange({ device: event.target.value as TrainingConfig["device"] })}
             >
+              <option value="auto">auto — GPU when available</option>
+              <option value="cuda">CUDA — force GPU</option>
+              <option value="cpu">CPU — force processor</option>
+              <option value="both">GPU if present, else CPU</option>
+            </Select>
+          </Field>
+          <Field label="Precision" hint={auto("precision")}>
+            <Select value={config.precision} onChange={(event) => onChange({ precision: event.target.value as Precision })}>
               <option value="auto">auto</option>
               <option value="bf16">bfloat16</option>
               <option value="fp16">float16</option>
@@ -1110,10 +1108,7 @@ function ConfigForm({
             </Select>
           </Field>
           <Field label="Quantization" hint="4-bit or 8-bit needs an NVIDIA GPU and bitsandbytes.">
-            <Select
-              value={config.quantization}
-              onChange={(event) => onChange({ quantization: event.target.value as Quantization })}
-            >
+            <Select value={config.quantization} onChange={(event) => onChange({ quantization: event.target.value as Quantization })}>
               <option value="none">none</option>
               <option value="4bit">4-bit (NF4)</option>
               <option value="8bit">8-bit</option>
@@ -1149,10 +1144,7 @@ function ConfigForm({
       ) : null}
 
       <div className="border-t border-[var(--border-soft)] pt-3">
-        <Field
-          label="Extra notes (optional)"
-          hint="Stored with the run so you remember what this configuration was for."
-        >
+        <Field label="Extra notes (optional)" hint="Stored with the run so you remember what this configuration was for.">
           <Textarea rows={2} placeholder="What is this run trying to achieve?" />
         </Field>
       </div>

@@ -105,7 +105,6 @@ def describe(source_dir: str | Path) -> dict[str, Any]:
         )
 
     files = sorted(path.name for path in source.iterdir() if path.is_file())
-    present = set(files)
     weights = [name for name in files if name.endswith(WEIGHT_SUFFIXES)]
     has_weights = bool(weights)
 

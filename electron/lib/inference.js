@@ -39,6 +39,11 @@ function ensureSession() {
         return;
       }
 
+      if (parsed.event === "inference-thinking") {
+        send("zeqou:inference:thinking", { requestId, token: detail.token });
+        return;
+      }
+
       if (parsed.event === "inference-error") {
         const waiter = pending.get(requestId);
         if (waiter) {

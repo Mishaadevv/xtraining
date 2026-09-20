@@ -5,7 +5,13 @@ import { ToastStack } from "@/components/ui/Overlay";
 import { Button, Note } from "@/components/ui/primitives";
 import { isDesktop } from "@/lib/bridge";
 import { useStore } from "@/state/store";
-import { appStore, bootstrap, refreshEnv, startAutoRefresh, subscribeToEvents } from "@/state/appStore";
+import {
+  appStore,
+  bootstrap,
+  refreshEnv,
+  startAutoRefresh,
+  subscribeToEvents,
+} from "@/state/appStore";
 
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import { NewTrainingPage } from "@/features/new-training/NewTrainingPage";
@@ -18,26 +24,24 @@ import { SettingsPage } from "@/features/settings/SettingsPage";
 
 export default function App() {
   const state = useStore(appStore);
-  const [desktopNoticeDismissed, setDesktopNoticeDismissed] = useState(false);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    let stopAutoRefresh: (() => void) | undefined;
+    let stopRefresh: (() => void) | undefined;
     void (async () => {
       await bootstrap();
       unsubscribe = subscribeToEvents();
-      // Event pushes only cover a live run; this keeps the lists, the GPU badge
-      // and the environment snapshot current without a manual Refresh.
-      stopAutoRefresh = startAutoRefresh();
+      stopRefresh = startAutoRefresh();
     })();
     return () => {
       unsubscribe?.();
-      stopAutoRefresh?.();
+      stopRefresh?.();
     };
   }, []);
 
-  // The status strip and badge should refresh when the window regains focus,
-  // since the user may have installed a GPU driver or a Python package meanwhile.
+  // The status strip reflects reality again the moment the window regains
+  // focus — the user may have installed a driver or a package meanwhile.
   useEffect(() => {
     const onFocus = () => void refreshEnv();
     window.addEventListener("focus", onFocus);
@@ -64,13 +68,13 @@ export default function App() {
       <Sidebar />
 
       <main className="relative z-[1] flex min-w-0 flex-1 flex-col">
-        {!isDesktop && !desktopNoticeDismissed ? (
+        {!isDesktop && !noticeDismissed ? (
           <div className="px-6 pt-4">
             <Note
               tone="warn"
               title="Interface preview only"
               actions={
-                <Button size="sm" variant="ghost" onClick={() => setDesktopNoticeDismissed(true)}>
+                <Button size="sm" variant="ghost" onClick={() => setNoticeDismissed(true)}>
                   Dismiss
                 </Button>
               }

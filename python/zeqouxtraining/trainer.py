@@ -95,9 +95,6 @@ def run_job(job_path: str | Path) -> int:
     def pause_requested() -> bool:
         return pause_file.exists()
 
-    def emit(event: str, detail: dict[str, Any] | None = None) -> None:
-        events.emit(event, detail)
-
     events.emit("training-status", {
         "message": "Preparing run", "phase": "prepare",
         "run_dir": str(run_dir.resolve()), "method": config["method"],
@@ -161,7 +158,7 @@ def run_job(job_path: str | Path) -> int:
         run_dir=run_dir,
         model_info=model_info,
         hardware=job.get("hardware") or {},
-        emit=emit,
+        emit=events.emit,
         stop_requested=stop_requested,
         pause_requested=pause_requested,
         total_samples=len(samples),

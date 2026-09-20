@@ -27,6 +27,68 @@ from . import events
 from .errors import humanize
 
 
+THINK_OPEN = "<think>"
+THINK_CLOSE = "</think>"
+
+THINKING_INSTRUCTION = (
+    "Before answering, reason step by step inside <think> and </think> tags. "
+    "Keep the reasoning brief and concrete, then give the final answer after "
+    "the closing tag. Only the final answer goes outside the tags."
+)
+
+
+class ThinkingSplitter:
+    """Splits a token stream into reasoning (<think>…</think>) and the answer.
+
+    Tokens are fed in as they arrive; the splitter yields ``(kind, text)``
+    pairs where ``kind`` is ``"thinking"`` or ``"answer"``. A tag split across
+    two chunks is handled by holding back a short tail until it can be
+    classified, so the UI never shows half a tag.
+    """
+
+    def __init__(self) -> None:
+        self.in_think = False
+        self.tail = ""
+
+    def feed(self, chunk: str):
+        buffer = self.tail + chunk
+        self.tail = ""
+        while buffer:
+            if self.in_think:
+                end = buffer.find(THINK_CLOSE)
+                if end == -1:
+                    # Hold back a possible partial closing tag.
+                    keep = self._partial_suffix(buffer, THINK_CLOSE)
+                    emit, self.tail = buffer[: len(buffer) - keep], buffer[len(buffer) - keep:]
+                    if emit:
+                        yield "thinking", emit
+                    return
+                emit, buffer = buffer[:end], buffer[end + len(THINK_CLOSE):]
+                if emit:
+                    yield "thinking", emit
+                self.in_think = False
+            else:
+                start = buffer.find(THINK_OPEN)
+                if start == -1:
+                    keep = self._partial_suffix(buffer, THINK_OPEN)
+                    emit, self.tail = buffer[: len(buffer) - keep], buffer[len(buffer) - keep:]
+                    if emit:
+                        yield "answer", emit
+                    return
+                emit, buffer = buffer[:start], buffer[start + len(THINK_OPEN):]
+                if emit:
+                    yield "answer", emit
+                self.in_think = True
+
+    @staticmethod
+    def _partial_suffix(text: str, tag: str) -> int:
+        """Length of the longest suffix of ``text`` that is a prefix of ``tag``."""
+        for size in range(min(len(text), len(tag) - 1), 0, -1):
+            if text.endswith(tag[:size]):
+                return size
+        return 0
+
+
 class InferenceRuntime:
     """Holds one loaded model. Everything is real state — no placeholders."""
 
@@ -128,6 +190,7 @@ class InferenceRuntime:
         prompt = str(request.get("prompt") or "")
         system = str(request.get("system") or "").strip()
         messages = request.get("messages")
+        thinking = bool(request.get("thinking", False))
         max_new_tokens = int(request.get("max_new_tokens") or 256)
         temperature = float(request.get("temperature") or 0.7)
         top_p = float(request.get("top_p") or 0.9)
@@ -135,7 +198,24 @@ class InferenceRuntime:
         stream = bool(request.get("stream", True))
 
         tokenizer = self.tokenizer
-        if messages:
+        if thinking:
+            if messages:
+                messages = [*messages]
+                if messages and messages[0].get("role") == "system":
+                    messages[0] = {
+                        **messages[0],
+                        "content": f"{messages[0].get('content', '')}\n\n{THINKING_INSTRUCTION}",
+                    }
+                else:
+                    messages.insert(0, {"role": "system", "content": THINKING_INSTRUCTION})
+                text = self._render_messages(messages)
+            else:
+                base_system = f"{system}\n\n{THINKING_INSTRUCTION}" if system else THINKING_INSTRUCTION
+                text = self._render_messages([
+                    {"role": "system", "content": base_system},
+                    {"role": "user", "content": prompt},
+                ])
+        elif messages:
             text = self._render_messages(messages)
         elif system:
             text = self._render_messages([
@@ -179,18 +259,47 @@ class InferenceRuntime:
         thread.start()
 
         pieces: list[str] = []
+        answer_pieces: list[str] = []
+        thinking_pieces: list[str] = []
+        splitter = ThinkingSplitter() if thinking else None
         for chunk in streamer:
             if error_box:
                 break
             pieces.append(chunk)
-            if stream:
+            if not stream:
+                continue
+            if splitter is None:
                 events.emit("inference-token", {"token": chunk})
+                continue
+            for kind, piece in splitter.feed(chunk):
+                if kind == "thinking":
+                    thinking_pieces.append(piece)
+                    events.emit("inference-thinking", {"token": piece})
+                else:
+                    answer_pieces.append(piece)
+                    events.emit("inference-token", {"token": piece})
         thread.join(timeout=1)
 
         if error_box:
             raise error_box[0]
 
-        text_out = "".join(pieces).strip()
+        if splitter is None:
+            reasoning = ""
+            text_out = "".join(pieces).strip()
+        else:
+            for kind, piece in splitter.feed(""):
+                if kind == "thinking":
+                    thinking_pieces.append(piece)
+                else:
+                    answer_pieces.append(piece)
+            reasoning = "".join(thinking_pieces).strip()
+            text_out = "".join(answer_pieces).strip()
+            raw = "".join(pieces)
+            # If the model never opened the tag, everything it wrote *is* the
+            # reasoning and there is no separate answer.
+            if THINK_OPEN not in raw and reasoning:
+                reasoning = raw.strip()
+                text_out = ""
         elapsed = max(0.001, time.time() - started)
         output_tokens = 0
         try:
@@ -198,8 +307,17 @@ class InferenceRuntime:
         except Exception:
             output_tokens = 0
 
+        thinking_tokens = 0
+        if reasoning:
+            try:
+                thinking_tokens = len(tokenizer(reasoning)["input_ids"])
+            except Exception:
+                thinking_tokens = max(1, len(reasoning) // 4)
+
         return {
             "text": text_out,
+            "thinking": reasoning,
+            "thinking_tokens": thinking_tokens,
             "tokens": output_tokens,
             "seconds": round(elapsed, 3),
             "tokens_per_second": round(output_tokens / elapsed, 2),

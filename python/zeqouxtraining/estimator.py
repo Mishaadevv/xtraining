@@ -1,15 +1,15 @@
 """VRAM requirement estimation.
 
-This is a deliberately transparent heuristic, not a measurement. It exists to
-stop obviously-doomed runs before they start, and it reports its own error bars
-so the UI can say "estimate" instead of pretending to know.
+A deliberately transparent heuristic, not a measurement. It exists to stop
+obviously-doomed runs before they start, and it reports its own error bars so
+the UI can say "estimate" instead of pretending to know.
 
 Model:
 
     weights        = params × bytes_per_param(precision, quantization)
-    gradients      = trainable_params × bytes_per_param(precision)        (fp32 on CPU)
+    gradients      = trainable_params × bytes_per_param(precision)
     optimizer      = trainable_params × 8 for AdamW (two fp32 moments)
-    activations    ≈ batch × seq × layers × hidden × k                    (residual/CUDA held)
+    activations    ≈ batch × seq × layers × hidden × k
 
 ``k`` is the activation factor. It depends on attention implementation,
 gradient checkpointing and the model's MLP ratio, so it is tuned to a practical
@@ -32,10 +32,8 @@ _WEIGHT_BYTES = {
 # Activation factor (bytes per element of the per-layer activation budget).
 # fp16 activations are the norm for training; checkpointing recomputes them.
 _ACTIVATION_FACTOR = {
-    (False, False): 6.0,   # no checkpointing
-    (True, False): 1.6,    # gradient checkpointing on
-    (False, True): 2.4,    # flash/sdpa attention on
-    (True, True): 1.0,
+    False: 6.0,   # no checkpointing
+    True: 1.6,    # gradient checkpointing on
 }
 
 _OVERHEAD_MB = 700.0  # CUDA context, cuDNN/cuBLAS workspaces, fragmentation
@@ -53,6 +51,7 @@ def estimate(
     config: dict[str, Any],
     model_info: dict[str, Any] | None = None,
     available_vram_mb: float | None = None,
+    available_ram_mb: float | None = None,
 ) -> dict[str, Any]:
     model_info = model_info or {}
     fields = model_info.get("fields") or {}
@@ -98,8 +97,7 @@ def estimate(
     optimizer_mb = trainable * 8.0 / (1024 ** 2)
 
     # --- activations ------------------------------------------------------ #
-    key = (checkpointing, False)
-    factor = _ACTIVATION_FACTOR[key]
+    factor = _ACTIVATION_FACTOR[checkpointing]
     activations_bytes = batch * seq * layers * hidden * factor
     # Accumulated micro-batches only keep the graph of the current one.
     activations_mb = activations_bytes / (1024 ** 2)
@@ -110,13 +108,22 @@ def estimate(
     low_mb = total_mb - activations_mb * 0.45
     high_mb = total_mb + activations_mb * 0.60
 
+    # CPU runs are bounded by system RAM, CUDA runs by VRAM — compare against
+    # whichever budget the requested device actually has.
+    device = str(config.get("device") or "auto").lower()
+    budget_mb = available_vram_mb
+    if device == "cpu" and available_ram_mb:
+        budget_mb = available_ram_mb * 0.7  # the OS and the app need room too
+    elif device == "cpu" and not available_vram_mb:
+        budget_mb = None
+
     verdict = "unknown"
     headroom_mb = None
-    if available_vram_mb:
-        headroom_mb = available_vram_mb - total_mb
-        if total_mb <= available_vram_mb * 0.75:
+    if budget_mb:
+        headroom_mb = budget_mb - total_mb
+        if total_mb <= budget_mb * 0.75:
             verdict = "fits"
-        elif total_mb <= available_vram_mb * 0.95:
+        elif total_mb <= budget_mb * 0.95:
             verdict = "tight"
         else:
             verdict = "exceeds"
@@ -149,7 +156,8 @@ def estimate(
         "estimated_total_mb": round(total_mb, 1),
         "range_low_mb": round(max(0.0, low_mb), 1),
         "range_high_mb": round(high_mb, 1),
-        "available_vram_mb": available_vram_mb,
+        "available_vram_mb": budget_mb if device == "cpu" else available_vram_mb,
+        "device_budget": device if device != "auto" else ("cpu" if not available_vram_mb else "cuda"),
         "headroom_mb": round(headroom_mb, 1) if headroom_mb is not None else None,
         "verdict": verdict,
         "suggestions": suggestions,

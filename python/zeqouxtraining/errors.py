@@ -1,8 +1,8 @@
 """Turn raw exceptions into explanations a user can act on.
 
-The requirement is explicit: no wall of traceback in the main UI. The traceback
-is still preserved and sent to the technical log panel, but what the user reads
-first is a sentence in plain language and a suggested next step.
+No wall of traceback in the main UI: the user reads a sentence and a suggested
+next step; the full traceback travels alongside in the `traceback` field for
+the technical log panel.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import traceback
 from typing import Any
 
-# (regex-free) substring match -> (code, message template, hint)
+# substring match -> (code, message, hint)
 _PATTERNS: list[tuple[tuple[str, ...], str, str, str]] = [
     (
         ("cuda out of memory", "cuda oom", "out of memory on device"),
@@ -107,14 +107,20 @@ _DEPENDENCY_HINT = (
 )
 
 
+def _first_missing(lowered: str) -> str | None:
+    for name in ("torch", "transformers", "peft", "accelerate", "bitsandbytes",
+                 "datasets", "safetensors", "sentencepiece", "pyarrow", "numpy"):
+        if f"'{name}'" in lowered or f'"{name}"' in lowered or f" {name} " in lowered:
+            return name
+    return None
+
+
 def humanize(exc: BaseException, stage: str = "") -> dict[str, Any]:
     """Map an exception to {code, message, hint, traceback, stage}."""
     raw = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
     lowered = raw.lower()
 
-    # Domain errors (DatasetError, ExportError, …) are already written for the
-    # user: keep their wording and hint instead of falling through to the
-    # generic traceback message.
+    # Domain errors carry their own user-facing wording: pass it through.
     code = getattr(exc, "code", None)
     if isinstance(code, str) and code and hasattr(exc, "hint") \
             and not isinstance(exc, (ImportError, ModuleNotFoundError)):
@@ -173,11 +179,3 @@ def humanize(exc: BaseException, stage: str = "") -> dict[str, Any]:
         "traceback": traceback.format_exc(),
         "stage": stage,
     }
-
-
-def _first_missing(lowered: str) -> str | None:
-    for name in ("torch", "transformers", "peft", "accelerate", "bitsandbytes",
-                 "datasets", "safetensors", "sentencepiece", "pyarrow", "numpy"):
-        if f"'{name}'" in lowered or f'"{name}"' in lowered or f" {name} " in lowered:
-            return name
-    return None

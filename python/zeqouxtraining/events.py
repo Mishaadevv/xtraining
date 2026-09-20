@@ -1,28 +1,26 @@
-"""Event protocol between the Python backend and the ZeqouXTraining shell.
+"""Wire protocol between the backend and the desktop shell.
 
-Wire format: one JSON object per line on stdout.
+One JSON object per line on the *original* stdout:
 
-    {"event": "<name>", "detail": { ... }}
+    {"event": "<name>", "detail": {...}, "ts": <unix time>}
 
-``event`` names used across the app (kept in one place so the renderer and the
-backend cannot drift apart):
+Event names (single source of truth for both sides):
 
-    ready                backend booted and is handling a command
-    stage                coarse progress step of a long task
-    log                  human-readable log line (level: info|warn|error)
-    hardware             detected hardware snapshot
-    dataset-progress     dataset loading progress
-    dataset-report       dataset validation report
-    model-info           resolved model metadata
-    training-status      phase change of a training run
-    training-progress    per-step metrics
-    training-checkpoint  a checkpoint was written
-    training-complete    run finished successfully
-    training-error       run failed; carries message + hint + traceback
-    inference-token      one streamed token of generation
-    inference-result     final generation result
-    result               terminal payload of a one-shot command
-    error                terminal error of a one-shot command
+    ready                 the backend booted and is handling a command
+    stage                 coarse step of a long task
+    log                   human-readable log line (level: info|warn|error)
+    dataset-progress      dataset loading progress
+    dataset-report        summary of what the run loaded
+    model-info            resolved model metadata
+    training-status       phase change of a training run
+    training-progress     per-step metrics
+    training-checkpoint   a checkpoint was written
+    training-complete     the run finished (completed | stopped | paused)
+    inference-token       one streamed token of generation
+    inference-result      final generation result
+    inference-error       generation failed
+    result                terminal payload of a one-shot command
+    error                 terminal error of a one-shot command
 """
 
 from __future__ import annotations
@@ -36,26 +34,33 @@ from typing import Any
 # The real stdout, captured before anything is allowed to replace it.
 _EVENT_STREAM = sys.stdout
 
+# Emitted by the trainer and forwarded verbatim to the renderer.
+TRAINING_EVENTS = (
+    "training-status",
+    "training-progress",
+    "training-checkpoint",
+    "training-complete",
+    "training-error",
+)
+
 
 def install_diagnostics_redirect() -> None:
     """Send everything that is not an event to stderr.
 
-    Called by long-running commands (training, inference) after the process has
-    started. ``emit`` keeps writing to the original stdout handle, so the
-    protocol survives regardless of what third-party code prints.
+    Long-running commands (train, infer) call this after booting. ``emit``
+    keeps writing to the captured stdout handle, so the protocol survives
+    whatever third-party libraries print to ``sys.stdout`` afterwards.
     """
     try:
         sys.stdout.flush()
     except Exception:
         pass
 
-    # Third-party libraries go to stderr from here on.
     sys.stdout = sys.stderr
 
-    # Keep Hugging Face / tqdm from writing progress bars anywhere.
+    # Keep Hugging Face / tqdm from drawing progress bars anywhere.
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
-    os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "0")
     os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     os.environ.setdefault("TQDM_DISABLE", "1")
@@ -63,11 +68,7 @@ def install_diagnostics_redirect() -> None:
 
 
 def emit(event: str, detail: dict[str, Any] | None = None) -> None:
-    """Write one protocol event.
-
-    Never raises into the caller: a broken stdout pipe (the app was closed)
-    should not turn into a confusing training crash.
-    """
+    """Write one protocol event. Never raises: a closed pipe must not crash a run."""
     payload = {"event": event, "detail": detail or {}, "ts": time.time()}
     try:
         _EVENT_STREAM.write(json.dumps(payload, ensure_ascii=True, default=str) + "\n")
@@ -77,7 +78,7 @@ def emit(event: str, detail: dict[str, Any] | None = None) -> None:
 
 
 def log(message: str, level: str = "info") -> None:
-    """Human-readable line for the technical log panel (goes to stderr)."""
+    """Human-readable line for the technical log panel."""
     emit("log", {"level": level, "message": message})
 
 
@@ -91,7 +92,7 @@ def result(payload: dict[str, Any]) -> None:
 
 def fail(message: str, *, hint: str = "", code: str = "error",
          traceback_text: str = "", extra: dict[str, Any] | None = None) -> None:
-    detail = {"message": message, "hint": hint, "code": code}
+    detail: dict[str, Any] = {"message": message, "hint": hint, "code": code}
     if traceback_text:
         detail["traceback"] = traceback_text
     if extra:

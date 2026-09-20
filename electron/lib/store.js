@@ -26,7 +26,6 @@ const SETTINGS_DEFAULTS = {
   // The initial Simple/Advanced state of a new wizard.
   simpleMode: true,
   advanced: {
-    // Passed to the backend as ZEQOUX_TRUST_REMOTE_CODE.
     trustRemoteCode: false,
   },
   lastProjectId: null,

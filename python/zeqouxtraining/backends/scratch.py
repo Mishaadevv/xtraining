@@ -3,11 +3,11 @@
 Trains a small GPT-style transformer **from random initialisation** on the
 user's dataset. There is no base model to download: the architecture comes from
 the job config (`scratch_*` keys) and the vocabulary is learned from the data
-itself with a character/word-level tokenizer built on the fly when no real
-tokenizer is available.
+itself with a character-level tokenizer built on the fly when no real tokenizer
+is available.
 
-This answers a fair question the UI could not before: "why can't I train a
-model from zero?" — now it can. It is honest about the trade-off: a model
+This answers a fair question the UI could not answer before: "why can't I train
+a model from zero?" — now it can. It is honest about the trade-off: a model
 trained from scratch needs far more data than a fine-tune to become useful,
 which the wizard says out loud when the method is selected.
 """
@@ -17,11 +17,13 @@ from __future__ import annotations
 import json
 import math
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from ..config import effective_batch_size
 from .base import RunContext, RunResult, TrainingBackend
+from .common import dump_json, jsonable, supported_kwargs
 
 # Named architecture presets. Numbers, not vibes: each is small enough to train
 # on the hardware this app realistically meets, including CPU-only laptops.
@@ -51,7 +53,7 @@ def resolve_architecture(config: dict[str, Any]) -> dict[str, int]:
     return preset
 
 
-class _CharTokenizer:
+class CharTokenizer:
     """A minimal character-level tokenizer.
 
     Used only when the run has no usable tokenizer (which is the normal case
@@ -60,8 +62,6 @@ class _CharTokenizer:
     """
 
     def __init__(self, texts: list[str], vocab_size: int):
-        from collections import Counter
-
         counts: Counter[str] = Counter()
         for text in texts:
             counts.update(text)
@@ -123,21 +123,37 @@ class ScratchBackend(TrainingBackend):
         from datasets import Dataset  # noqa: PLC0415
         from transformers import (  # noqa: PLC0415
             DataCollatorForLanguageModeling,
+            GPT2Config,
+            GPT2LMHeadModel,
             Trainer,
             TrainerCallback,
             TrainingArguments,
         )
 
         config = dict(ctx.config)
-        method = "scratch"
         run_dir = Path(ctx.run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         started = time.time()
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Same device contract as the HF backend: cuda/cpu/both/auto, and a
+        # loud failure when CUDA was requested but does not exist.
+        requested = str(config.get("device") or "auto").lower()
+        cuda_available = torch.cuda.is_available()
+        if requested == "cuda" and not cuda_available:
+            raise RuntimeError(
+                "CUDA was selected but torch sees no GPU. Check nvidia-smi, install "
+                "the CUDA torch build, or switch the device to CPU / Auto."
+            )
+        if requested in ("cuda", "both") and cuda_available:
+            device = "cuda"
+        elif requested == "cpu":
+            device = "cpu"
+        else:
+            device = "cuda" if cuda_available else "cpu"
+        device_note = f" ({torch.cuda.get_device_name(0)})" if device == "cuda" else ""
         arch = resolve_architecture(config)
         ctx.emit("training-status", {
-            "message": f"Training device: {device.upper()}",
+            "message": f"Training device: {device.upper()}{device_note}",
             "phase": "device",
             "device": device,
         })
@@ -172,7 +188,7 @@ class ScratchBackend(TrainingBackend):
             except Exception:
                 tokenizer = None
         if tokenizer is None:
-            tokenizer = _CharTokenizer(texts, int(arch["vocab"]))
+            tokenizer = CharTokenizer(texts, int(arch["vocab"]))
             ctx.emit("training-status", {
                 "message": f"No tokenizer available — learned a character-level one from the dataset ({tokenizer.vocab_size:,} symbols).",
                 "phase": "tokenizer",
@@ -182,8 +198,6 @@ class ScratchBackend(TrainingBackend):
         tokenizer.padding_side = "right"
 
         # ------------------------------------------------------------- model
-        from transformers import GPT2Config, GPT2LMHeadModel  # noqa: PLC0415
-
         vocab_size = max(int(getattr(tokenizer, "vocab_size", 0) or 0), int(arch["vocab"]))
         model_config = GPT2Config(
             vocab_size=vocab_size,
@@ -304,82 +318,12 @@ class ScratchBackend(TrainingBackend):
         }
         if eval_dataset is not None:
             argument_kwargs["eval_strategy"] = "epoch"
-        training_args = TrainingArguments(**_supported_kwargs(TrainingArguments.__init__, argument_kwargs))
+        training_args = TrainingArguments(**supported_kwargs(TrainingArguments.__init__, argument_kwargs))
         total_steps = int(getattr(training_args, "max_steps", 0) or planned_steps)
 
         # ---------------------------------------------------------- callbacks
-        history: dict[str, list[Any]] = {
-            "loss": [], "eval_loss": [], "lr": [], "grad_norm": [], "epoch": [], "step": [],
-        }
-        state = {"steps": 0, "last_checkpoint": None}
-        stop_file_state = {"stop": False, "pause": False}
-
-        class ProgressCallback(TrainerCallback):
-            def on_step_end(self, args, trainer_state, control, **kwargs):
-                if ctx.requested_stop() or ctx.requested_pause():
-                    stop_file_state["stop"] = ctx.requested_stop()
-                    stop_file_state["pause"] = ctx.requested_pause()
-                    control.should_training_stop = True
-                return control
-
-            def on_log(self, args, trainer_state, control, logs=None, **kwargs):
-                logs = logs or {}
-                step = int(trainer_state.global_step or 0)
-                state["steps"] = step
-                loss = logs.get("loss", logs.get("train_loss"))
-                eval_loss = logs.get("eval_loss")
-                lr = logs.get("learning_rate")
-                grad_norm = logs.get("grad_norm")
-
-                if loss is not None:
-                    history["loss"].append(round(float(loss), 6))
-                if eval_loss is not None:
-                    history["eval_loss"].append(round(float(eval_loss), 6))
-                if lr is not None:
-                    history["lr"].append(float(lr))
-                if grad_norm is not None:
-                    history["grad_norm"].append(float(grad_norm))
-                history["step"].append(step)
-                history["epoch"].append(round(float(trainer_state.epoch or 0.0), 4))
-
-                elapsed = max(0.001, time.time() - started)
-                rate = step / elapsed if step else 0.0
-                remaining = max(0, total_steps - step)
-                eta = int(remaining / rate) if rate > 0 else None
-
-                progress = int(min(99.0, (step / max(1, total_steps)) * 100)) if total_steps else 0
-                ctx.emit("training-progress", {
-                    "progress": progress,
-                    "step": step,
-                    "total_steps": int(total_steps),
-                    "loss": float(loss) if loss is not None else None,
-                    "eval_loss": float(eval_loss) if eval_loss is not None else None,
-                    "learning_rate": float(lr) if lr is not None else None,
-                    "grad_norm": float(grad_norm) if grad_norm is not None else None,
-                    "epoch": round(float(trainer_state.epoch or 0.0), 4),
-                    "elapsed_seconds": int(elapsed),
-                    "seconds_per_step": round(elapsed / step, 4) if step else None,
-                    "steps_per_second": round(rate, 4),
-                    "samples_per_second": round(rate * effective_batch_size(config), 3),
-                    "eta_seconds": eta,
-                    "message": f"Step {step}/{total_steps}",
-                })
-
-            def on_save(self, args, trainer_state, control, **kwargs):
-                checkpoint_dir = Path(args.output_dir) / f"checkpoint-{int(trainer_state.global_step)}"
-                if not checkpoint_dir.is_dir():
-                    return control
-                state["last_checkpoint"] = str(checkpoint_dir)
-                size = sum(f.stat().st_size for f in checkpoint_dir.rglob("*") if f.is_file())
-                ctx.emit("training-checkpoint", {
-                    "step": int(trainer_state.global_step),
-                    "path": str(checkpoint_dir),
-                    "size_bytes": size,
-                    "loss": history["loss"][-1] if history["loss"] else None,
-                    "epoch": round(float(trainer_state.epoch or 0.0), 4),
-                    "message": f"Checkpoint saved at step {int(trainer_state.global_step)}",
-                })
-                return control
+        history, state, stop_state = make_history()
+        callback = make_progress_callback(ctx, history, state, stop_state, started, total_steps, config)
 
         trainer = Trainer(
             model=model,
@@ -387,7 +331,7 @@ class ScratchBackend(TrainingBackend):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             data_collator=collator,
-            callbacks=[ProgressCallback()],
+            callbacks=[callback],
         )
 
         if trainer.state.max_steps:
@@ -415,23 +359,19 @@ class ScratchBackend(TrainingBackend):
         trainer.save_model(str(run_dir))
         tokenizer.save_pretrained(str(run_dir))
 
-        status = "paused" if stop_file_state["pause"] else ("stopped" if stop_file_state["stop"] else "completed")
+        status = "paused" if stop_state["pause"] else ("stopped" if stop_state["stop"] else "completed")
 
         metrics = {}
         if getattr(train_result, "metrics", None):
             metrics = {k: float(v) for k, v in train_result.metrics.items() if isinstance(v, (int, float))}
 
-        final_loss = None
-        if history["loss"]:
-            final_loss = history["loss"][-1]
-        elif metrics.get("train_loss") is not None:
-            final_loss = metrics["train_loss"]
+        final_loss = history["loss"][-1] if history["loss"] else metrics.get("train_loss")
 
         metadata = {
             "name": config.get("output_name") or run_dir.name,
             "job_id": ctx.job_id,
-            "train_mode": method,
-            "method": method,
+            "train_mode": "scratch",
+            "method": "scratch",
             "base_model": None,
             "adapter": False,
             "scratch": True,
@@ -448,11 +388,11 @@ class ScratchBackend(TrainingBackend):
             "duration_seconds": int(time.time() - started),
             "dataset": config.get("dataset"),
         }
-        (run_dir / "training_history.json").write_text(json.dumps(history, ensure_ascii=True, indent=2), encoding="utf-8")
-        (run_dir / "training_config.json").write_text(json.dumps(_jsonable(config), ensure_ascii=True, indent=2), encoding="utf-8")
-        (run_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
-
-        last_checkpoint = state["last_checkpoint"]
+        dump_json(run_dir / "training_history.json", history)
+        dump_json(run_dir / "training_config.json", config)
+        (run_dir / "metadata.json").write_text(
+            json.dumps(jsonable(metadata), ensure_ascii=True, indent=2), encoding="utf-8"
+        )
 
         return RunResult(
             status=status,
@@ -460,27 +400,113 @@ class ScratchBackend(TrainingBackend):
             total_steps=real_steps,
             history=history,
             output_dir=str(run_dir),
-            last_checkpoint=last_checkpoint,
+            last_checkpoint=state["last_checkpoint"],
             metrics=metrics,
         )
 
 
-def _supported_kwargs(target, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Drop keyword arguments the installed transformers version does not accept."""
-    import inspect  # noqa: PLC0415
+def make_history() -> tuple[dict[str, list[Any]], dict[str, Any], dict[str, bool]]:
+    """Fresh history/state containers shared by both built-in backends."""
+    history: dict[str, list[Any]] = {
+        "loss": [], "eval_loss": [], "lr": [], "grad_norm": [], "epoch": [], "step": [],
+    }
+    state: dict[str, Any] = {"steps": 0, "last_checkpoint": None}
+    stop_state: dict[str, bool] = {"stop": False, "pause": False}
+    return history, state, stop_state
 
-    try:
-        accepted = set(inspect.signature(target).parameters)
-    except (TypeError, ValueError):
-        return kwargs
-    return {key: value for key, value in kwargs.items() if key in accepted}
 
+def make_progress_callback(
+    ctx: RunContext,
+    history: dict[str, list[Any]],
+    state: dict[str, Any],
+    stop_state: dict[str, bool],
+    started: float,
+    total_steps: int,
+    config: dict[str, Any],
+):
+    """Build the Trainer callback that streams metrics over the protocol."""
+    from transformers import TrainerCallback  # noqa: PLC0415
 
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return str(value)
+    outer = ctx
+
+    class ProgressCallback(TrainerCallback):
+        def on_step_end(self, args, trainer_state, control, **kwargs):
+            if outer.requested_stop() or outer.requested_pause():
+                stop_state["stop"] = outer.requested_stop()
+                stop_state["pause"] = outer.requested_pause()
+                control.should_training_stop = True
+            return control
+
+        def on_log(self, args, trainer_state, control, logs=None, **kwargs):
+            logs = logs or {}
+            step = int(trainer_state.global_step or 0)
+            state["steps"] = step
+            loss = logs.get("loss", logs.get("train_loss"))
+            eval_loss = logs.get("eval_loss")
+            lr = logs.get("learning_rate")
+            grad_norm = logs.get("grad_norm")
+
+            if loss is not None:
+                history["loss"].append(round(float(loss), 6))
+            if eval_loss is not None:
+                history["eval_loss"].append(round(float(eval_loss), 6))
+            if lr is not None:
+                history["lr"].append(float(lr))
+            if grad_norm is not None:
+                history["grad_norm"].append(float(grad_norm))
+            history["step"].append(step)
+            history["epoch"].append(round(float(trainer_state.epoch or 0.0), 4))
+
+            elapsed = max(0.001, time.time() - started)
+            rate = step / elapsed if step else 0.0
+            remaining = max(0, total_steps - step)
+            eta = int(remaining / rate) if rate > 0 else None
+
+            gpu_allocated = None
+            gpu_reserved = None
+            try:
+                import torch  # noqa: PLC0415
+
+                if torch.cuda.is_available():
+                    gpu_allocated = round(torch.cuda.memory_allocated(0) / (1024 ** 2), 1)
+                    gpu_reserved = round(torch.cuda.memory_reserved(0) / (1024 ** 2), 1)
+            except Exception:
+                pass
+
+            progress = int(min(99.0, (step / max(1, total_steps)) * 100)) if total_steps else 0
+            outer.emit("training-progress", {
+                "progress": progress,
+                "step": step,
+                "total_steps": int(total_steps),
+                "loss": float(loss) if loss is not None else None,
+                "eval_loss": float(eval_loss) if eval_loss is not None else None,
+                "learning_rate": float(lr) if lr is not None else None,
+                "grad_norm": float(grad_norm) if grad_norm is not None else None,
+                "epoch": round(float(trainer_state.epoch or 0.0), 4),
+                "elapsed_seconds": int(elapsed),
+                "seconds_per_step": round(elapsed / step, 4) if step else None,
+                "steps_per_second": round(rate, 4),
+                "samples_per_second": round(rate * effective_batch_size(config), 3),
+                "eta_seconds": eta,
+                "gpu_memory_allocated_mb": gpu_allocated,
+                "gpu_memory_reserved_mb": gpu_reserved,
+                "message": f"Step {step}/{total_steps}",
+            })
+
+        def on_save(self, args, trainer_state, control, **kwargs):
+            checkpoint_dir = Path(args.output_dir) / f"checkpoint-{int(trainer_state.global_step)}"
+            if not checkpoint_dir.is_dir():
+                return control
+            state["last_checkpoint"] = str(checkpoint_dir)
+            size = sum(f.stat().st_size for f in checkpoint_dir.rglob("*") if f.is_file())
+            outer.emit("training-checkpoint", {
+                "step": int(trainer_state.global_step),
+                "path": str(checkpoint_dir),
+                "size_bytes": size,
+                "loss": history["loss"][-1] if history["loss"] else None,
+                "epoch": round(float(trainer_state.epoch or 0.0), 4),
+                "message": f"Checkpoint saved at step {int(trainer_state.global_step)}",
+            })
+            return control
+
+    return ProgressCallback()

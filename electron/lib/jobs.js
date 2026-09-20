@@ -24,6 +24,9 @@ const hardware = require("./hardware");
 const GPU_SAMPLE_INTERVAL_MS = 1000;
 const MAX_GPU_SAMPLES = 4000;
 
+/** A status after which the record will never change again. */
+const TERMINAL_STATUSES = new Set(["completed", "stopped", "paused", "failed"]);
+
 /** runId -> live state */
 const active = new Map();
 let emitToRenderer = () => {};
@@ -42,14 +45,6 @@ function send(channel, payload) {
 
 /* ------------------------------------------------------------------ helpers */
 
-function readJson(filePath, fallback = null) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    return fallback;
-  }
-}
-
 function findProject(projectId) {
   if (!projectId) return null;
   return projectsStore().get().find((project) => project.id === projectId) || null;
@@ -59,14 +54,25 @@ function persistentRun(runId) {
   return runsStore().get().find((run) => run.id === runId) || null;
 }
 
-function activeRunFor(runId) {
-  return active.get(runId) || null;
-}
-
 /** Drop the large in-memory-only fields before writing the index. */
 function slimRun(run) {
   const { gpuSamples, ...rest } = run;
   return rest;
+}
+
+/**
+ * Wait until the run leaves `active` so the caller never races the async
+ * `finalise()` (it writes artefacts, scans checkpoints and only then removes
+ * the entry). Without this, the caller can see a terminal status while the
+ * record is still being written — and a racing delete gets undone when the
+ * final state is persisted afterwards.
+ */
+async function waitForFinalize(runId, { timeoutMs = 60000, intervalMs = 100 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (active.has(runId) && Date.now() <= deadline) {
+    // eslint-disable-next-line no-await-in-loop - polling with a backoff is the point
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
 }
 
 function upsertRun(run) {
@@ -338,8 +344,6 @@ function handleEvent(state, parsed) {
       break;
 
     case "log":
-      break;
-
     default:
       break;
   }
@@ -554,20 +558,26 @@ function getLiveSnapshot(runId) {
 }
 
 function deleteRun(runId) {
-  if (active.has(runId)) {
-    return { ok: false, error: "Stop the run before deleting it." };
-  }
-  const store = runsStore();
-  const target = persistentRun(runId);
-  store.replace(store.get().filter((run) => run.id !== runId));
-  if (target && target.runDir && isInside(dirs.runs(), target.runDir)) {
-    try {
-      fs.rmSync(target.runDir, { recursive: true, force: true });
-    } catch (error) {
-      return { ok: false, error: error.message, recordRemoved: true };
+  return waitForFinalize(runId).then(() => {
+    const state = active.get(runId);
+    // A live process must stay protected: deleting it mid-flight would orphan
+    // the trainer. Anything finalising has been waited out above.
+    if (state && TERMINAL_STATUSES.has(state.record.status) === false) {
+      return { ok: false, error: "Stop the run before deleting it." };
     }
-  }
-  return { ok: true };
+    const store = runsStore();
+    const target = persistentRun(runId);
+    store.replace(store.get().filter((run) => run.id !== runId));
+    active.delete(runId);
+    if (target && target.runDir && isInside(dirs.runs(), target.runDir)) {
+      try {
+        fs.rmSync(target.runDir, { recursive: true, force: true });
+      } catch (error) {
+        return { ok: false, error: error.message, recordRemoved: true };
+      }
+    }
+    return { ok: true };
+  });
 }
 
 function readLog(runId, tailLines = 800) {

@@ -1,21 +1,6 @@
-"""Training backends.
+"""Pluggable training backends.
 
-Importing this package must stay cheap and dependency-free: backends import
-their heavy libraries lazily inside ``run``.
+A backend subclasses :class:`TrainingBackend`, declares the packages it
+requires, and registers itself in ``registry.py``. The runner, the protocol and
+the UI stay unchanged.
 """
-
-from .base import RunContext, RunResult, TrainingBackend
-from .registry import available_backends, backend_capabilities, get_backend
-
-__all__ = [
-    "RunContext",
-    "RunResult",
-    "TrainingBackend",
-    "available_backends",
-    "backend_capabilities",
-    "get_backend",
-]
-
-# Exported lazily by name so importing this package stays dependency-free.
-SCRATCH_BACKEND = "scratch"
-HF_PEFT_BACKEND = "hf-peft"

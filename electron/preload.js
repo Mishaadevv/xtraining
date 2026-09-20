@@ -20,6 +20,7 @@ const CHANNELS = [
   "zeqou:projects:changed",
   "zeqou:settings:changed",
   "zeqou:inference:token",
+  "zeqou:inference:thinking",
   "zeqou:inference:state",
   "zeqou:inference:log",
 ];

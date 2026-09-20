@@ -1,8 +1,7 @@
 """Dependency inspection for the ML runtime.
 
-Uses ``importlib.metadata``/``find_spec`` only — never imports torch itself, so
-this runs on a bare Python interpreter and can tell the user exactly what is
-missing and how to fix it.
+Uses ``importlib.metadata``/``find_spec`` only — never imports torch — so this
+runs on a bare interpreter and can say exactly what is missing and how to fix it.
 """
 
 from __future__ import annotations
@@ -39,10 +38,8 @@ PACKAGES: list[dict[str, str]] = [
      "purpose": "Tokenizer for Llama/Mistral-style models"},
 ]
 
-# Which packages gate which capability, so the UI can answer
-# "can I run this?" before a run starts instead of failing after loading weights.
-# NOTE: every training path loads datasets via `datasets.Dataset`, and QLoRA
-# needs bitsandbytes — keep these lists in sync with the backend `requires`.
+# Which packages gate which capability, so the UI answers "can I run this?"
+# before a run starts instead of failing after loading weights.
 CAPABILITIES: dict[str, list[str]] = {
     "lora": ["torch", "transformers", "peft", "accelerate", "datasets"],
     "qlora": ["torch", "transformers", "peft", "accelerate", "bitsandbytes", "datasets"],
@@ -56,11 +53,18 @@ CAPABILITIES: dict[str, list[str]] = {
     "hf_download": ["huggingface_hub"],
 }
 
+INSTALL_GROUPS = ("core", "quantization", "download", "datasets", "tokenizer")
+
+
+def _available(module: str) -> bool:
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
 
 def _version(module: str) -> str | None:
     """Installed distribution version, if the module is importable."""
-    if importlib.util.find_spec(module) is None:
-        return None
     for name in (module, module.replace("_", "-")):
         try:
             return md.version(name)
@@ -72,16 +76,13 @@ def _version(module: str) -> str | None:
 
 
 def inspect() -> dict[str, Any]:
-    packages = {}
+    packages: dict[str, Any] = {}
     for entry in PACKAGES:
         module = entry["module"]
-        try:
-            available = importlib.util.find_spec(module) is not None
-        except (ImportError, ValueError):
-            available = False
+        installed = _available(module)
         packages[module] = {
-            "installed": available,
-            "version": _version(module) if available else None,
+            "installed": installed,
+            "version": _version(module) if installed else None,
             "pip": entry["pip"],
             "group": entry["group"],
             "purpose": entry["purpose"],
@@ -116,22 +117,19 @@ def inspect() -> dict[str, Any]:
 def install_plan(cuda_tag: str | None = None) -> dict[str, Any]:
     """Build the exact pip command that would make this machine training-ready.
 
-    For NVIDIA we point torch at the CUDA wheel index, which is the only way to
-    get a CUDA-enabled build without breaking an existing environment.
+    For NVIDIA GPUs torch must come from the CUDA wheel index; a plain
+    ``pip install torch`` may pull a CPU-only build.
     """
     missing = [p["pip"] for p in PACKAGES
-               if p["group"] in ("core", "quantization", "download", "datasets", "tokenizer")
-               and importlib.util.find_spec(p["module"]) is None]
+               if p["group"] in INSTALL_GROUPS and not _available(p["module"])]
 
     args = [sys.executable, "-m", "pip", "install", "--upgrade"]
     if cuda_tag:
-        # Options BEFORE packages: torch must come from the CUDA index, and
-        # everything else must still resolve from PyPI (without --extra-index-url
-        # pip looks for transformers/peft/... ONLY in the CUDA index and fails
-        # with "No matching distribution").
+        # Options BEFORE packages: torch comes from the CUDA index while
+        # everything else must still resolve from PyPI.
         args += ["--index-url", f"https://download.pytorch.org/whl/{cuda_tag}",
                  "--extra-index-url", "https://pypi.org/simple"]
-        args += ["torch"]
+        args.append("torch")
         missing = [m for m in missing if m != "torch"]
     args += missing or ["torch", "transformers", "peft", "accelerate", "safetensors"]
 

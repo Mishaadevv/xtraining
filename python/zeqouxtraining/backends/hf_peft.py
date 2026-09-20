@@ -28,6 +28,8 @@ from typing import Any
 
 from ..config import effective_batch_size
 from .base import RunContext, RunResult, TrainingBackend
+from .common import dump_json, jsonable, load_kwargs, supported_kwargs
+from .scratch import make_history, make_progress_callback
 
 # Projections that adapters are normally attached to, in preference order.
 _TARGET_CANDIDATES: list[list[str]] = [
@@ -72,7 +74,7 @@ def detect_target_modules(model, configured: Any) -> list[str]:
     return unique[:2] or ["q_proj", "v_proj"]
 
 
-def _read_adapter_config(folder: Path) -> dict[str, Any]:
+def read_adapter_config(folder: Path) -> dict[str, Any]:
     """Read adapter_config.json from a PEFT adapter folder."""
     try:
         raw = (folder / "adapter_config.json").read_text(encoding="utf-8", errors="replace")
@@ -81,7 +83,7 @@ def _read_adapter_config(folder: Path) -> dict[str, Any]:
         return {}
 
 
-def _resolve_base_from_adapter(ctx: RunContext, source: str) -> str:
+def resolve_base_from_adapter(ctx: RunContext, source: str) -> str:
     """Resolve the real base model for a PEFT adapter folder.
 
     Any model trained here as LoRA/QLoRA/SFT is saved as an adapter on top of a
@@ -94,7 +96,7 @@ def _resolve_base_from_adapter(ctx: RunContext, source: str) -> str:
     folder = Path(source)
     if not folder.is_dir() or not (folder / "adapter_config.json").is_file():
         return source
-    adapter_config = _read_adapter_config(folder)
+    adapter_config = read_adapter_config(folder)
     base = str(adapter_config.get("base_model_name_or_path") or "").strip()
     if not base:
         raise ValueError(
@@ -113,33 +115,6 @@ def _resolve_base_from_adapter(ctx: RunContext, source: str) -> str:
         "resolved_base_model": base,
     })
     return base
-
-
-def _supported_kwargs(target, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Drop keyword arguments the installed library version does not accept."""
-    import inspect  # noqa: PLC0415
-
-    try:
-        accepted = set(inspect.signature(target).parameters)
-    except (TypeError, ValueError):
-        return kwargs
-    return {key: value for key, value in kwargs.items() if key in accepted}
-
-
-def _load_kwargs(loader, base: dict[str, Any]) -> dict[str, Any]:
-    """Handle the torch_dtype → dtype rename across transformers versions."""
-    import inspect  # noqa: PLC0415
-
-    try:
-        accepted = set(inspect.signature(loader).parameters)
-    except (TypeError, ValueError):
-        return base
-    kwargs = dict(base)
-    if "dtype" in accepted and "dtype" not in kwargs:
-        kwargs["dtype"] = kwargs.pop("torch_dtype", None)
-    elif "torch_dtype" not in accepted:
-        kwargs.pop("torch_dtype", None)
-    return {key: value for key, value in kwargs.items() if key in accepted and value is not None}
 
 
 class HuggingFacePeftBackend(TrainingBackend):
@@ -216,7 +191,6 @@ class HuggingFacePeftBackend(TrainingBackend):
             AutoTokenizer,
             DataCollatorForLanguageModeling,
             Trainer,
-            TrainerCallback,
             TrainingArguments,
         )
 
@@ -226,9 +200,25 @@ class HuggingFacePeftBackend(TrainingBackend):
         run_dir.mkdir(parents=True, exist_ok=True)
         started = time.time()
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Honour the requested device: "cuda" forces GPU (clear error when the
+        # machine has none), "cpu" forces CPU, "auto"/"both" take CUDA when it
+        # exists. Nothing silent — the choice is announced either way.
+        requested = str(config.get("device") or "auto").lower()
+        cuda_available = torch.cuda.is_available()
+        if requested == "cuda" and not cuda_available:
+            raise RuntimeError(
+                "CUDA was selected but torch sees no GPU. Check nvidia-smi, install "
+                "the CUDA torch build, or switch the device to CPU / Auto."
+            )
+        if requested in ("cuda", "both") and cuda_available:
+            device = "cuda"
+        elif requested == "cpu":
+            device = "cpu"
+        else:
+            device = "cuda" if cuda_available else "cpu"
+        device_note = f" ({torch.cuda.get_device_name(0)})" if device == "cuda" else ""
         ctx.emit("training-status", {
-            "message": f"Training device: {device.upper()}",
+            "message": f"Training device: {device.upper()}{device_note}",
             "phase": "device",
             "device": device,
         })
@@ -236,7 +226,9 @@ class HuggingFacePeftBackend(TrainingBackend):
         # ---------------------------------------------------------- tokenizer
         # A trained model folder may itself be a LoRA adapter (any method except
         # a full fine-tune). Resolve it to its base and merge before training.
-        base_model = _resolve_base_from_adapter(ctx, str(config["base_model"]))
+        adapter_source = str(config["base_model"])
+        base_model = resolve_base_from_adapter(ctx, adapter_source)
+        continue_from_adapter = adapter_source != base_model
         ctx.emit("training-status", {"message": f"Loading tokenizer for {base_model}", "phase": "tokenizer"})
         tokenizer = AutoTokenizer.from_pretrained(
             base_model,
@@ -250,13 +242,22 @@ class HuggingFacePeftBackend(TrainingBackend):
         # ------------------------------------------------------- quantization
         quantization = str(config.get("quantization") or "none")
         want_quant = quantization in ("4bit", "8bit") and device == "cuda"
+        if want_quant and continue_from_adapter:
+            # merge_and_unload cannot fold an adapter into bitsandbytes-quantized
+            # weights, so a merged continuation runs in full precision instead.
+            ctx.emit("training-status", {
+                "message": "Quantization is skipped when continuing from a merged adapter; training runs in full precision.",
+                "phase": "warning",
+            })
+            want_quant = False
+            quantization = "none"
         if quantization in ("4bit", "8bit") and device != "cuda":
             ctx.emit("training-status", {
                 "message": "Quantization was requested but no CUDA device is available; training in full precision.",
                 "phase": "warning",
             })
 
-        load_kwargs: dict[str, Any] = {
+        load_options: dict[str, Any] = {
             "trust_remote_code": bool(config.get("trust_remote_code")),
             "torch_dtype": self._resolve_dtype(torch, config),
         }
@@ -266,15 +267,15 @@ class HuggingFacePeftBackend(TrainingBackend):
 
             compute_dtype = self._resolve_dtype(torch, config)
             if quantization == "4bit":
-                load_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_options["quantization_config"] = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
                     bnb_4bit_use_double_quant=True,
                     bnb_4bit_compute_dtype=compute_dtype,
                 )
             else:
-                load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
-            load_kwargs["device_map"] = "auto"
+                load_options["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+            load_options["device_map"] = "auto"
             ctx.emit("training-status", {
                 "message": f"Quantization enabled: {quantization} (bitsandbytes)",
                 "phase": "quantization",
@@ -283,7 +284,7 @@ class HuggingFacePeftBackend(TrainingBackend):
         # -------------------------------------------------------------- model
         ctx.emit("training-status", {"message": f"Loading model {base_model}", "phase": "model_loading"})
         model = AutoModelForCausalLM.from_pretrained(
-            base_model, **_load_kwargs(AutoModelForCausalLM.from_pretrained, load_kwargs)
+            base_model, **load_kwargs(AutoModelForCausalLM.from_pretrained, load_options)
         )
         if device == "cpu" and not want_quant:
             model = model.to("cpu")
@@ -301,7 +302,6 @@ class HuggingFacePeftBackend(TrainingBackend):
             model = PeftModel.from_pretrained(model, trained_dir)
             model = model.merge_and_unload()
 
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total_params = sum(p.numel() for p in model.parameters())
         ctx.emit("model-info", {
             "params": total_params,
@@ -316,6 +316,7 @@ class HuggingFacePeftBackend(TrainingBackend):
                 model, use_gradient_checkpointing=bool(config.get("gradient_checkpointing"))
             )
 
+        target_modules: list[str] | None = None
         if adapter:
             target_modules = detect_target_modules(model, config.get("lora_target_modules"))
             ctx.emit("training-status", {
@@ -386,7 +387,7 @@ class HuggingFacePeftBackend(TrainingBackend):
 
         if len(tokenized) == 0:
             raise ValueError(
-                f"Every sample was shorter than 2 tokens after tokenisation "
+                "Every sample was shorter than 2 tokens after tokenisation "
                 f"(context length {context_length}). Lower the context length or check the dataset mapping."
             )
 
@@ -468,109 +469,24 @@ class HuggingFacePeftBackend(TrainingBackend):
             "disable_tqdm": True,
         }
         # transformers renamed evaluation_strategy -> eval_strategy in 4.46.
-        strategy_key = "eval_strategy"
         try:
             import inspect  # noqa: PLC0415
 
             params = set(inspect.signature(TrainingArguments.__init__).parameters)
-            if "eval_strategy" in params:
-                strategy_key = "eval_strategy"
-            elif "evaluation_strategy" in params:
-                strategy_key = "evaluation_strategy"
-            else:
-                strategy_key = ""
+            strategy_key = ("eval_strategy" if "eval_strategy" in params
+                            else "evaluation_strategy" if "evaluation_strategy" in params
+                            else "")
         except Exception:
             strategy_key = "evaluation_strategy"
         if strategy_key:
             argument_kwargs[strategy_key] = strategy
 
-        training_args = TrainingArguments(**_supported_kwargs(TrainingArguments.__init__, argument_kwargs))
+        training_args = TrainingArguments(**supported_kwargs(TrainingArguments.__init__, argument_kwargs))
         total_steps = int(getattr(training_args, "max_steps", 0) or planned_steps)
 
         # ----------------------------------------------------------- callbacks
-        history: dict[str, list[Any]] = {"loss": [], "eval_loss": [], "lr": [], "grad_norm": [], "epoch": [], "step": []}
-        state = {"steps": 0, "last_checkpoint": None, "last_emit": 0.0, "samples": 0}
-        stop_file_state = {"stop": False, "pause": False}
-
-        outer = self
-
-        class ProgressCallback(TrainerCallback):
-            def on_step_end(self, args, trainer_state, control, **kwargs):
-                if ctx.requested_stop() or ctx.requested_pause():
-                    stop_file_state["stop"] = ctx.requested_stop()
-                    stop_file_state["pause"] = ctx.requested_pause()
-                    control.should_training_stop = True
-                return control
-
-            def on_log(self, args, trainer_state, control, logs=None, **kwargs):
-                logs = logs or {}
-                step = int(trainer_state.global_step or 0)
-                state["steps"] = step
-                loss = logs.get("loss", logs.get("train_loss"))
-                eval_loss = logs.get("eval_loss")
-                lr = logs.get("learning_rate")
-                grad_norm = logs.get("grad_norm")
-
-                if loss is not None:
-                    history["loss"].append(round(float(loss), 6))
-                if eval_loss is not None:
-                    history["eval_loss"].append(round(float(eval_loss), 6))
-                if lr is not None:
-                    history["lr"].append(float(lr))
-                if grad_norm is not None:
-                    history["grad_norm"].append(float(grad_norm))
-                history["step"].append(step)
-                history["epoch"].append(round(float(trainer_state.epoch or 0.0), 4))
-
-                elapsed = max(0.001, time.time() - started)
-                rate = step / elapsed if step else 0.0
-                remaining = max(0, total_steps - step)
-                eta = int(remaining / rate) if rate > 0 else None
-
-                gpu_allocated = None
-                gpu_reserved = None
-                if device == "cuda":
-                    try:
-                        gpu_allocated = round(torch.cuda.memory_allocated(0) / (1024 ** 2), 1)
-                        gpu_reserved = round(torch.cuda.memory_reserved(0) / (1024 ** 2), 1)
-                    except Exception:
-                        pass
-
-                progress = int(min(99.0, (step / max(1, total_steps)) * 100)) if total_steps else 0
-                ctx.emit("training-progress", {
-                    "progress": progress,
-                    "step": step,
-                    "total_steps": int(total_steps),
-                    "loss": float(loss) if loss is not None else None,
-                    "eval_loss": float(eval_loss) if eval_loss is not None else None,
-                    "learning_rate": float(lr) if lr is not None else None,
-                    "grad_norm": float(grad_norm) if grad_norm is not None else None,
-                    "epoch": round(float(trainer_state.epoch or 0.0), 4),
-                    "elapsed_seconds": int(elapsed),
-                    "seconds_per_step": round(elapsed / step, 4) if step else None,
-                    "steps_per_second": round(rate, 4),
-                    "samples_per_second": round(rate * effective_batch_size(config), 3),
-                    "eta_seconds": eta,
-                    "gpu_memory_allocated_mb": gpu_allocated,
-                    "gpu_memory_reserved_mb": gpu_reserved,
-                    "message": f"Step {step}/{total_steps}",
-                })
-
-            def on_save(self, args, trainer_state, control, **kwargs):
-                checkpoint_dir = Path(args.output_dir) / f"checkpoint-{int(trainer_state.global_step)}"
-                if not checkpoint_dir.is_dir():
-                    return control
-                state["last_checkpoint"] = str(checkpoint_dir)
-                size = sum(f.stat().st_size for f in checkpoint_dir.rglob("*") if f.is_file())
-                ctx.emit("training-checkpoint", {
-                    "step": int(trainer_state.global_step),
-                    "path": str(checkpoint_dir),
-                    "size_bytes": size,
-                    "loss": history["loss"][-1] if history["loss"] else None,
-                    "epoch": round(float(trainer_state.epoch or 0.0), 4),
-                    "message": f"Checkpoint saved at step {int(trainer_state.global_step)}",
-                })
-                return control
+        history, state, stop_state = make_history()
+        callback = make_progress_callback(ctx, history, state, stop_state, started, total_steps, config)
 
         trainer = Trainer(
             model=model,
@@ -578,7 +494,7 @@ class HuggingFacePeftBackend(TrainingBackend):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             data_collator=collator,
-            callbacks=[ProgressCallback()],
+            callbacks=[callback],
         )
 
         if trainer.state.max_steps:
@@ -606,31 +522,24 @@ class HuggingFacePeftBackend(TrainingBackend):
         train_result = trainer.train(resume_from_checkpoint=resume_from)
 
         real_steps = int(getattr(trainer.state, "global_step", 0) or state["steps"])
-        run_dir_existing = Path(training_args.output_dir)
 
         # ---------------------------------------------------------------- save
         ctx.emit("training-status", {"message": "Saving model", "phase": "saving"})
-        trainer.save_model(str(run_dir_existing))
-        tokenizer.save_pretrained(str(run_dir_existing))
+        trainer.save_model(str(run_dir))
+        tokenizer.save_pretrained(str(run_dir))
 
-        stopping = stop_file_state["stop"] or stop_file_state["pause"]
-        status = "paused" if stop_file_state["pause"] else ("stopped" if stopping else "completed")
+        status = "paused" if stop_state["pause"] else ("stopped" if stop_state["stop"] else "completed")
 
         metrics = {}
         if getattr(train_result, "metrics", None):
             metrics = {k: float(v) for k, v in train_result.metrics.items()
                        if isinstance(v, (int, float))}
 
-        final_loss = None
-        if history["loss"]:
-            final_loss = history["loss"][-1]
-        elif metrics.get("train_loss") is not None:
-            final_loss = metrics["train_loss"]
+        final_loss = history["loss"][-1] if history["loss"] else metrics.get("train_loss")
 
         metadata = {
-            "name": config.get("output_name") or run_dir_existing.name,
+            "name": config.get("output_name") or run_dir.name,
             "job_id": ctx.job_id,
-            "project_id": ctx.job_id,
             "train_mode": method,
             "method": method,
             "base_model": base_model,
@@ -657,19 +566,15 @@ class HuggingFacePeftBackend(TrainingBackend):
         }
 
         trainer.save_state()
-        (run_dir_existing / "training_history.json").write_text(
-            json.dumps(history, ensure_ascii=True, indent=2), encoding="utf-8"
-        )
-        (run_dir_existing / "training_config.json").write_text(
-            json.dumps(_jsonable(config), ensure_ascii=True, indent=2), encoding="utf-8"
-        )
-        (run_dir_existing / "metadata.json").write_text(
-            json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8"
+        dump_json(run_dir / "training_history.json", history)
+        dump_json(run_dir / "training_config.json", config)
+        (run_dir / "metadata.json").write_text(
+            json.dumps(jsonable(metadata), ensure_ascii=True, indent=2), encoding="utf-8"
         )
 
         last_checkpoint = state["last_checkpoint"]
         if not last_checkpoint:
-            candidates = [p for p in run_dir_existing.iterdir()
+            candidates = [p for p in run_dir.iterdir()
                           if p.is_dir() and p.name.startswith("checkpoint-")]
             if candidates:
                 candidates.sort(key=lambda p: int(p.name.split("-")[-1]))
@@ -680,17 +585,7 @@ class HuggingFacePeftBackend(TrainingBackend):
             final_loss=final_loss,
             total_steps=real_steps,
             history=history,
-            output_dir=str(run_dir_existing),
+            output_dir=str(run_dir),
             last_checkpoint=last_checkpoint,
             metrics=metrics,
         )
-
-
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return str(value)

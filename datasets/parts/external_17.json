@@ -1,0 +1,1502 @@
+[
+  {
+    "input": "it_001: Come si cucina la pasta al pomodoro?",
+    "thinking": "Cucina: utente chiede ricetta base, rispondo con passaggi brevi e tempi chiari.",
+    "output": "Per la pasta al pomodoro fai soffriggere aglio in olio, aggiungi pelati, sale e basilico, cuoci 15 minuti e condisci la pasta al dente."
+  },
+  {
+    "input": "it_002: Come preparo un risotto ai funghi?",
+    "thinking": "Cucina: domanda su risotto, spiego ordine tostatura-brodo-mantecatura.",
+    "output": "Tosta il riso con cipolla, sfuma con vino, aggiungi brodo poco alla volta e funghi rosolati, manteca con burro e parmigiano."
+  },
+  {
+    "input": "it_003: Come faccio la pizza in casa?",
+    "thinking": "Cucina: serve ricetta pizza, do dosi logiche e temperatura alta.",
+    "output": "Impasta farina acqua lievito sale e olio, lievita 2 ore, stendi, condisci con pomodoro e mozzarella, cuoci a 250 gradi 8 minuti."
+  },
+  {
+    "input": "it_004: Come preparo il tiramisu?",
+    "thinking": "Cucina: dolce classico, elenco strati e riposo in frigo.",
+    "output": "Monta tuorli con zucchero e mascarpone, inzuppa savoiardi nel caffe, alterna strati e spolvera cacao, riposa in frigo 4 ore."
+  },
+  {
+    "input": "it_005: Come cucino le lenticchie?",
+    "thinking": "Cucina: legumi semplici, indico tempi e sale alla fine per non indurire.",
+    "output": "Sciacqua le lenticchie, soffriggi carota cipolla sedano, aggiungi lenticchie acqua e alloro, cuoci 30 minuti e sala alla fine."
+  },
+  {
+    "input": "it_006: Come faccio un minestrone?",
+    "thinking": "Cucina: zuppa di verdure, descrivo taglio cottura lunga e pasta finale.",
+    "output": "Taglia verdure di stagione, soffriggi base, copri con acqua o brodo, cuoci 40 minuti, aggiungi pasta piccola negli ultimi 10 minuti."
+  },
+  {
+    "input": "it_007: Come preparo il pesto alla genovese?",
+    "thinking": "Cucina: salsa cruda, sottolineo ingredienti freddi e olio a filo.",
+    "output": "Frulla basilico pinoli aglio parmigiano e pecorino con olio a filo, tieni tutto freddo per restare verde brillante."
+  },
+  {
+    "input": "it_008: Come cucino il pollo al forno?",
+    "thinking": "Cucina: secondo di carne, do temperatura tempo e consiglio di bagnare.",
+    "output": "Massaggia il pollo con olio sale rosmarino e limone, cuoci a 200 gradi unora, bagna col sugo a meta cottura."
+  },
+  {
+    "input": "it_009: Come faccio le bruschette?",
+    "thinking": "Cucina: antipasto veloce, ordino tostatura e condimento fresco.",
+    "output": "Tosta il pane, strofina aglio, aggiungi pomodorini sale olio e basilico fresco appena prima di servire."
+  },
+  {
+    "input": "it_010: Come preparo una frittata di verdure?",
+    "thinking": "Cucina: piatto con uova, spiego prima verdure poi cagliata lenta.",
+    "output": "Salta le verdure, sbatti uova con sale e parmigiano, versa in padella, cuoci coperto 8 minuti e gira."
+  },
+  {
+    "input": "it_011: Come cucino il salmone in padella?",
+    "thinking": "Cucina: pesce veloce, indico pelle croccante e cottura breve.",
+    "output": "Asciuga i filetti, scotta lato pelle 4 minuti, gira un minuto, sfuma con limone e servi subito."
+  },
+  {
+    "input": "it_012: Come faccio il brodo vegetale?",
+    "thinking": "Cucina: base leggera, elenco verdure e tempo di bollitura.",
+    "output": "Bolli carota cipolla sedano patata e pomodoro in acqua salata unora, filtra e usa per risotti e zuppe."
+  },
+  {
+    "input": "it_013: Come preparo biscotti semplici?",
+    "thinking": "Cucina: dolcetti base, do impasto rapido e cottura corta.",
+    "output": "Impasta farina burro zucchero uovo e lievito, forma biscotti, cuoci a 180 gradi 12 minuti finche dorati."
+  },
+  {
+    "input": "it_014: Come cucino gli gnocchi?",
+    "thinking": "Cucina: pasta fresca, ricordo segnale di galleggiamento come cottura.",
+    "output": "Lessali in acqua salata, scolali appena salgono a galla e condisci subito con sugo caldo e parmigiano."
+  },
+  {
+    "input": "it_015: Come faccio una caprese?",
+    "thinking": "Cucina: piatto freddo, descrivo assemblaggio senza cottura.",
+    "output": "Alterna fette di mozzarella e pomodoro, aggiungi basilico olio sale e origano, servi fresca."
+  },
+  {
+    "input": "it_016: Cosa metto in valigia per tre giorni a Roma?",
+    "thinking": "Viaggio: breve soggiorno urbano, consiglio pratico leggero e scarpe comode.",
+    "output": "Porta due cambi leggeri, scarpe comode, giacca antipioggia, caricatore, documenti e una borsa piccola per il giorno."
+  },
+  {
+    "input": "it_017: Come raggiungo il centro dall'aeroporto di Milano?",
+    "thinking": "Viaggio: trasferimento aeroporto, indico treno e bus con tempi.",
+    "output": "Prendi il treno Malpensa Express fino a Cadorna oppure il bus navetta, ci vogliono circa 40 minuti."
+  },
+  {
+    "input": "it_018: Dove dormire economico a Firenze?",
+    "thinking": "Viaggio: alloggio economico, suggerisco zone e prenotazione anticipata.",
+    "output": "Cerca ostelli vicino Santa Maria Novella o B&B in Oltrarno, prenota in anticipo e leggi recensioni recenti."
+  },
+  {
+    "input": "it_019: Come visito Venezia in un giorno?",
+    "thinking": "Viaggio: itinerario breve, propongo tappe chiave e vaporetto.",
+    "output": "Arriva presto, passeggia San Marco Rialto e Dorsoduro, usa il vaporetto una volta e perdi tempo nei vicoli."
+  },
+  {
+    "input": "it_020: Cosa vedere a Napoli in due giorni?",
+    "thinking": "Viaggio: programma due giorni, divido citta ed escursione.",
+    "output": "Dedica un giorno al centro e Spaccanapoli e uno a Pompei o al lungomare con pizza la sera."
+  },
+  {
+    "input": "it_021: Come mi muovo in treno in Italia?",
+    "thinking": "Viaggio: treni nazionali, spiego acquisto binario e tempi.",
+    "output": "Compra biglietti su app o in stazione, arriva 10 minuti prima, controlla binario sui tabelloni e valida se richiesto."
+  },
+  {
+    "input": "it_022: Cosa porto per un viaggio al mare?",
+    "thinking": "Viaggio: kit mare, elenco protezione sole e comfort.",
+    "output": "Costume, crema solare, cappello, telo, sandali, borraccia e un libro leggero per la spiaggia."
+  },
+  {
+    "input": "it_023: Come organizzo un weekend in Toscana?",
+    "thinking": "Viaggio: weekend rurale, consiglio base auto e ritmo lento.",
+    "output": "Scegli una base come Siena, noleggia auto, visita due borghi al giorno e prenota una degustazione."
+  },
+  {
+    "input": "it_024: Come faccio il check-in in hotel?",
+    "thinking": "Viaggio: procedura hotel, elenco passaggi reception standard.",
+    "output": "Mostra documento alla reception, dai carta per cauzione, ritira chiave e chiedi orari colazione e wifi."
+  },
+  {
+    "input": "it_025: Cosa fare se perdo il passaporto all'estero?",
+    "thinking": "Viaggio: emergenza documenti, indico denuncia e consolato.",
+    "output": "Fai denuncia alla polizia, contatta il consolato italiano, porta foto e copia documenti per il foglio di viaggio."
+  },
+  {
+    "input": "it_026: Come viaggio leggero con solo bagaglio a mano?",
+    "thinking": "Viaggio: minimalismo, suggerisco arrotolare e taglie mini.",
+    "output": "Arrotola i vestiti, porta mini taglie, indossa le scarpe pesanti e lascia spazio per souvenir."
+  },
+  {
+    "input": "it_027: Dove mangiare bene a Bologna?",
+    "thinking": "Viaggio: cibo locale, indirizzo a trattorie e piatti tipici.",
+    "output": "Cerca trattorie fuori dalle piazze principali, prova tortellini tagliatelle e tigelle, evita menu turistici."
+  },
+  {
+    "input": "it_028: Come noleggio una bici in citta?",
+    "thinking": "Viaggio: bici urbana, spiego app controlli e sicurezza.",
+    "output": "Usa app di bike sharing o noleggi in stazione, controlla freni e luci, lega sempre la bici."
+  },
+  {
+    "input": "it_029: Quando visitare le Cinque Terre?",
+    "thinking": "Viaggio: periodo migliore, consiglio stagioni intermedie e treni.",
+    "output": "Vai a maggio o settembre, evita agosto affollato, usa il treno tra i borghi e sentieri al mattino."
+  },
+  {
+    "input": "it_030: Come compro souvenir senza spendere troppo?",
+    "thinking": "Viaggio: acquisti furbi, propongo confronto e artigianato piccolo.",
+    "output": "Confronta prezzi in due negozi, scegli prodotti artigianali piccoli e contratta solo dove consentito."
+  },
+  {
+    "input": "it_031: Come apro un conto in banca?",
+    "thinking": "Shopping-servizi: pratica bancaria, elenco documenti e attivazione app.",
+    "output": "Porta documento e codice fiscale in filiale, scegli conto base, firma moduli e attiva app per operare online."
+  },
+  {
+    "input": "it_032: Come pago con carta all'estero?",
+    "thinking": "Shopping-servizi: pagamenti esteri, consiglio valuta locale e carta riserva.",
+    "output": "Avvisa la banca, paga in valuta locale senza conversione dinamica e tieni una seconda carta di riserva."
+  },
+  {
+    "input": "it_033: Come faccio la spesa al mercato?",
+    "thinking": "Shopping-servizi: mercato fresco, suggerisco orario confronto e stagionalita.",
+    "output": "Arriva presto, confronta tre banchi, compra frutta di stagione e chiedi assaggi prima di scegliere."
+  },
+  {
+    "input": "it_034: Come scelgo frutta matura?",
+    "thinking": "Shopping-servizi: scelta frutta, descrivo profumo tatto e difetti.",
+    "output": "Annusa vicino al picciolo, premi leggero deve cedere poco, evita ammaccature e macchie scure."
+  },
+  {
+    "input": "it_035: Come risparmio sulla spesa mensile?",
+    "thinking": "Shopping-servizi: budget famiglia, propongo lista sfuso e prezzo al chilo.",
+    "output": "Fai lista settimanale, compra sfuso e stagionale, confronta prezzi al chilo ed evita sprechi."
+  },
+  {
+    "input": "it_036: Come restituisco un prodotto difettoso?",
+    "thinking": "Shopping-servizi: reso negozio, ricordo scontrino termini e tono calmo.",
+    "output": "Tieni scontrino, torna entro i termini, spiega il difetto con calma e chiedi sostituzione o rimborso."
+  },
+  {
+    "input": "it_037: Come compro scarpe comode?",
+    "thinking": "Shopping-servizi: calzature, consiglio orario prova e calzini adatti.",
+    "output": "Provale nel pomeriggio, cammina nel negozio, controlla pianta e tallone e porta i calzini giusti."
+  },
+  {
+    "input": "it_038: Come scelgo un regalo per un amico?",
+    "thinking": "Shopping-servizi: regali, propongo hobby budget e biglietto personale.",
+    "output": "Pensa ai suoi hobby, fissa un budget, scegli qualcosa di utile e aggiungi un biglietto scritto a mano."
+  },
+  {
+    "input": "it_039: Come confronto prezzi online?",
+    "thinking": "Shopping-servizi: acquisti web, ricordo totale con spedizione e garanzia.",
+    "output": "Cerca lo stesso modello in tre siti, aggiungi spedizione, controlla recensioni e garanzia prima di pagare."
+  },
+  {
+    "input": "it_040: Come vendo oggetti usati?",
+    "thinking": "Shopping-servizi: second hand, suggerisco foto oneste e luogo sicuro.",
+    "output": "Fotografa bene, descrivi difetti onestamente, fissa prezzo medio e incontra in luogo pubblico."
+  },
+  {
+    "input": "it_041: Come faccio una lista della spesa efficace?",
+    "thinking": "Shopping-servizi: organizzazione, propongo reparti quantita e percorso.",
+    "output": "Dividi per reparti, segna quantita, ordina per percorso del negozio e spunta mentre compri."
+  },
+  {
+    "input": "it_042: Come scelgo una giacca invernale?",
+    "thinking": "Shopping-servizi: abbigliamento, elenco dettagli tecnici da controllare.",
+    "output": "Controlla imbottitura cuciture e cappuccio, provala con maglione e verifica tasche e cerniera."
+  },
+  {
+    "input": "it_043: Come acquisto biglietti per musei?",
+    "thinking": "Shopping-servizi: cultura, consiglio prenotazione online e mattina.",
+    "output": "Prenota online per saltare la coda, scegli fascia oraria mattutina e porta documento per riduzioni."
+  },
+  {
+    "input": "it_044: Come tengo traccia delle spese?",
+    "thinking": "Shopping-servizi: bilancio, propongo annotazione categorie e revisione settimanale.",
+    "output": "Annota ogni uscita in app o quaderno, dividi per categorie e rivedi totale ogni domenica sera."
+  },
+  {
+    "input": "it_045: Come mi iscrivo in palestra?",
+    "thinking": "Shopping-servizi: sport, consiglio prova confronto e inizio graduale.",
+    "output": "Prova una lezione gratuita, confronta abbonamenti, leggi recesso e inizia con due sedute settimanali."
+  },
+  {
+    "input": "it_046: Come dormire meglio la notte?",
+    "thinking": "Salute: sonno, elenco igiene del sonno e caffe limitato.",
+    "output": "Spegni schermi unora prima, tieni stanza fresca e buia, evita caffe dopo le 15 e alzati a orari regolari."
+  },
+  {
+    "input": "it_047: Cosa fare per il mal di testa leggero?",
+    "thinking": "Salute: disturbo comune, propongo idratazione riposo e cautela farmaci.",
+    "output": "Bevi acqua, riposa in stanza buia, fai stretching al collo e se serve prendi farmaco seguendo il foglietto."
+  },
+  {
+    "input": "it_048: Come mi proteggo dal raffreddore?",
+    "thinking": "Salute: prevenzione, ricordo mani aria e sonno.",
+    "output": "Lava spesso le mani, arieggia le stanze, dormi abbastanza e copri naso e bocca nei luoghi affollati."
+  },
+  {
+    "input": "it_049: Come inizio a correre?",
+    "thinking": "Salute: corsa base, schema alternato e progressione lenta.",
+    "output": "Alterna cammino e corsa 1 minuto per 20 minuti, tre volte a settimana, aumenta piano e usa scarpe adatte."
+  },
+  {
+    "input": "it_050: Come faccio stretching al mattino?",
+    "thinking": "Salute: mobilita, propongo routine breve e respirazione.",
+    "output": "Dedica 5 minuti a collo spalle schiena e gambe, respira lento e non forzare mai il dolore."
+  },
+  {
+    "input": "it_051: Cosa mangiare prima di allenarmi?",
+    "thinking": "Salute: energia, consiglio spuntino leggero e idratazione.",
+    "output": "Uno spuntino leggero 1 ora prima come banana o yogurt, bevi acqua ed evita cibi pesanti e fritti."
+  },
+  {
+    "input": "it_052: Come bevo abbastanza acqua?",
+    "thinking": "Salute: idratazione, suggerisco promemoria visivi e gusto.",
+    "output": "Tieni borraccia visibile, bevi un bicchiere a ogni pausa e aggiungi limone se ti annoi."
+  },
+  {
+    "input": "it_053: Come rilassarsi dopo il lavoro?",
+    "thinking": "Salute: relax serale, sequenza passeggiata cena e stop notifiche.",
+    "output": "Fai una passeggiata di 15 minuti, cena leggera, spegni notifiche e leggi o ascolta musica calma."
+  },
+  {
+    "input": "it_054: Come curo una piccola scottatura?",
+    "thinking": "Salute: primo soccorso, indico raffreddamento e garza.",
+    "output": "Raffredda con acqua corrente 10 minuti, non rompere vesciche, copri con garza pulita e osserva."
+  },
+  {
+    "input": "it_055: Come affronto una giornata stressante?",
+    "thinking": "Salute: stress, propongo blocchi pause e priorita.",
+    "output": "Dividi compiti in blocchi da 25 minuti, fai pause brevi, respira profondo e rimanda cio che non e urgente."
+  },
+  {
+    "input": "it_056: Come tengo pulita la casa in 20 minuti?",
+    "thinking": "Casa: pulizie rapide, suggerisco timer e ordine per stanza.",
+    "output": "Metti timer, inizia da una stanza, raccogli oggetti, spolvera superfici e passa aspirapolvere veloce."
+  },
+  {
+    "input": "it_057: Come organizzo l'armadio?",
+    "thinking": "Casa: ordine, metodo svuota dividi ed etichetta.",
+    "output": "Svuota tutto, dividi tieni dona butta, piega per categorie e usa scatole etichettate."
+  },
+  {
+    "input": "it_058: Come lavo i vetri senza aloni?",
+    "thinking": "Casa: vetri, tecnica S e microfibra.",
+    "output": "Usa acqua tiepida con poco detergente, panno in microfibra, movimenti a S e asciuga subito."
+  },
+  {
+    "input": "it_059: Come elimino i cattivi odori in cucina?",
+    "thinking": "Casa: odori, elenco fonti e rimedio limone.",
+    "output": "Arieggia, pulisci frigo e bidone, fai bollire acqua con limone e bicarbonato sui fornelli."
+  },
+  {
+    "input": "it_060: Come annaffio le piante da appartamento?",
+    "thinking": "Casa: piante, regola dito-asciutto e sottovaso vuoto.",
+    "output": "Controlla dito nel terreno, annaffia solo se asciutto, svuota sottovaso e dai luce indiretta."
+  },
+  {
+    "input": "it_061: Come cambio una lampadina?",
+    "thinking": "Casa: manutenzione, ricordo sicurezza e potenza uguale.",
+    "output": "Spegni interruttore, aspetta che si raffreddi, svita con cautela e avvita nuova della stessa potenza."
+  },
+  {
+    "input": "it_062: Come preparo la casa per gli ospiti?",
+    "thinking": "Casa: ospiti, checklist bagno camera e cortesia.",
+    "output": "Cambia asciugamani, libera un ripiano, prepara lenzuola pulite e un piccolo set cortesia."
+  },
+  {
+    "input": "it_063: Come risparmio energia in casa?",
+    "thinking": "Casa: energia, elenco standby LED e termostato.",
+    "output": "Spegni standby, usa LED, lava a 30 gradi e abbassa riscaldamento di un grado con termostato."
+  },
+  {
+    "input": "it_064: Come stiro una camicia?",
+    "thinking": "Casa: bucato, ordine parti e vapore.",
+    "output": "Inizia da colletto e polsi, poi spalle e corpo, usa vapore e appendi subito per evitare pieghe."
+  },
+  {
+    "input": "it_065: Come pulisco il bagno velocemente?",
+    "thinking": "Casa: bagno, sequenza spruzza-attendi-strofina.",
+    "output": "Spruzza detergente, lascia agire, strofina sanitari e specchio, sciacqua e cambia tappetino se serve."
+  },
+  {
+    "input": "it_066: Come sistemo il balcone?",
+    "thinking": "Casa: esterno piccolo, propongo declutter e verde facile.",
+    "output": "Togli oggetti rotti, pulisci pavimento, aggiungi due vasi facili e una sedia pieghevole per relax."
+  },
+  {
+    "input": "it_067: Come conservo bene gli alimenti?",
+    "thinking": "Casa: frigo, regole contenitori data e temperatura.",
+    "output": "Metti avanzi in contenitori chiusi, etichetta con data, tieni frigo a 4 gradi e consuma entro due giorni."
+  },
+  {
+    "input": "it_068: Come lavo i pavimenti in legno?",
+    "thinking": "Casa: parquet, attenzione poca acqua e neutro.",
+    "output": "Aspira prima, usa panno ben strizzato con detergente neutro e asciuga subito per non gonfiare."
+  },
+  {
+    "input": "it_069: Come preparo la tavola per una cena?",
+    "thinking": "Casa: ospiti a cena, ordine base e centrotavola.",
+    "output": "Stendi tovaglia pulita, metti piatti bicchieri e posate, aggiungi acqua pane e un centrotavola semplice."
+  },
+  {
+    "input": "it_070: Come riparo un rubinetto che gocciola?",
+    "thinking": "Casa: idraulica base, passi chiusura e guarnizione.",
+    "output": "Chiudi acqua, smonta manopola, sostituisci guarnizione usurata e rimonta stringendo senza forzare."
+  },
+  {
+    "input": "it_071: Come miglioro il rapporto con i colleghi?",
+    "thinking": "Lavoro: relazioni, micro azioni quotidiane ascolto e ringraziamento.",
+    "output": "Saluta ogni giorno, ascolta senza interrompere, offri aiuto piccolo e ringrazia in modo specifico."
+  },
+  {
+    "input": "it_072: Come preparo una riunione breve?",
+    "thinking": "Lavoro: meeting, struttura obiettivo invitati e decisioni.",
+    "output": "Definisci obiettivo e ordine del giorno, invita solo chi serve, chiudi con decisioni e responsabili."
+  },
+  {
+    "input": "it_073: Come scrivo una email professionale?",
+    "thinking": "Lavoro: email, formato oggetto corpo e firma.",
+    "output": "Oggetto chiaro, saluto breve, richiesta in tre righe, scadenza e firma con contatti."
+  },
+  {
+    "input": "it_074: Come organizzo le mie attivita giornaliere?",
+    "thinking": "Lavoro: produttivita, tre priorita e blocchi tempo.",
+    "output": "Elenca tre priorita la mattina, blocca tempi nel calendario e raggruppa email in due momenti."
+  },
+  {
+    "input": "it_075: Come affronto un colloquio di lavoro?",
+    "thinking": "Lavoro: selezione, preparazione esempi e follow up.",
+    "output": "Studia azienda, prepara esempi concreti di risultati, fai domande sul ruolo e ringrazia dopo."
+  },
+  {
+    "input": "it_076: Come chiedo un aumento?",
+    "thinking": "Lavoro: negoziazione, dati risultati e tempismo.",
+    "output": "Raccogli risultati degli ultimi mesi, scegli momento calmo, esponi valore e proponi cifra realistica."
+  },
+  {
+    "input": "it_077: Come gestisco le scadenze strette?",
+    "thinking": "Lavoro: deadline, scomposizione e comunicazione.",
+    "output": "Scomponi in micro passi, stima tempi, comunica stato ogni giorno e taglia dettagli non essenziali."
+  },
+  {
+    "input": "it_078: Come lavoro da casa in modo efficace?",
+    "thinking": "Lavoro: remoto, spazio orari e regole condivise.",
+    "output": "Crea angolo fisso, orari chiari, pause programmate e accordi con chi vive con te."
+  },
+  {
+    "input": "it_079: Come do un feedback difficile?",
+    "thinking": "Lavoro: feedback, schema fatti impatto e proposta.",
+    "output": "Descrivi fatti, spiega impatto, proponi alternativa e chiudi con fiducia nella persona."
+  },
+  {
+    "input": "it_080: Come imparo una nuova competenza?",
+    "thinking": "Lavoro: apprendimento, micro obiettivo e pratica costante.",
+    "output": "Scegli un micro obiettivo settimanale, pratica 30 minuti al giorno e mostra progressi a qualcuno."
+  },
+  {
+    "input": "it_081: Come preparo una presentazione semplice?",
+    "thinking": "Lavoro: slide, regola una idea ed esempio.",
+    "output": "Una idea per slide, titolo grande, poche parole, un esempio concreto e prova ad alta voce."
+  },
+  {
+    "input": "it_082: Come gestisco email troppe?",
+    "thinking": "Lavoro: inbox, filtri batch e telefonate.",
+    "output": "Cancella newsletter, usa cartelle e filtri, rispondi in batch e trasforma lunghe in chiamate."
+  },
+  {
+    "input": "it_083: Come collaboro in un progetto di gruppo?",
+    "thinking": "Lavoro: team, ruoli check e file condivisi.",
+    "output": "Dividi ruoli chiari, fissa check brevi, condividi file unici e celebra piccole vittorie."
+  },
+  {
+    "input": "it_084: Come trovo stage da studente?",
+    "thinking": "Lavoro: stage, CV breve e follow up.",
+    "output": "Prepara CV di una pagina, scrivi a piccole aziende, chiedi referenze ai professori e segui dopo una settimana."
+  },
+  {
+    "input": "it_085: Come bilancio studio e lavoro?",
+    "thinking": "Lavoro: equilibrio, pianificazione e sonno protetto.",
+    "output": "Pianifica settimana la domenica, proteggi sonno, usa pause per ripassi brevi e di no a extra."
+  },
+  {
+    "input": "it_086: Come scelgo uno sport da iniziare?",
+    "thinking": "Sport-hobby: scelta, prove confronto e corso base.",
+    "output": "Prova tre attivita diverse, valuta orari costi e divertimento, inizia con corso base di un mese."
+  },
+  {
+    "input": "it_087: Come inizio a suonare la chitarra?",
+    "thinking": "Sport-hobby: musica, accordatura tre accordi e costanza.",
+    "output": "Accorda ogni volta, impara tre accordi base, cambia lentamente e suona 15 minuti al giorno."
+  },
+  {
+    "input": "it_088: Come comincio a dipingere?",
+    "thinking": "Sport-hobby: arte, kit minimo e soggetti semplici.",
+    "output": "Compra tre colori primari e due pennelli, prova su carta, copia soggetti semplici e proteggi piano."
+  },
+  {
+    "input": "it_089: Come leggo di piu?",
+    "thinking": "Sport-hobby: lettura, routine serale e portabilita.",
+    "output": "Tieni libro sul comodino, leggi 10 pagine prima di dormire e porta ebook in borsa."
+  },
+  {
+    "input": "it_090: Come inizio a fotografare?",
+    "thinking": "Sport-hobby: foto, pratica luce e selezione.",
+    "output": "Scatta ogni giorno, studia luce del mattino, avvicinati al soggetto e seleziona 5 foto a settimana."
+  },
+  {
+    "input": "it_091: Come faccio jogging senza stancarmi?",
+    "thinking": "Sport-hobby: corsa leggera, ritmo respiro e defaticamento.",
+    "output": "Parti piano, respira col naso, fai pause camminate e allunga 5 minuti dopo."
+  },
+  {
+    "input": "it_092: Come gioco a calcio con amici?",
+    "thinking": "Sport-hobby: calcio amatoriale, logistica e riscaldamento.",
+    "output": "Trova campetto libero, porta pallone e acqua, fai squadre miste e riscaldamento 10 minuti."
+  },
+  {
+    "input": "it_093: Come imparo a nuotare da adulto?",
+    "thinking": "Sport-hobby: nuoto, lezioni e galleggiamento prima.",
+    "output": "Prendi lezioni base, pratica galleggiamento, respira lateralmente e non avere fretta."
+  },
+  {
+    "input": "it_094: Come coltivo un piccolo orto?",
+    "thinking": "Sport-hobby: orto, tre piante facili sole e sera.",
+    "output": "Inizia con pomodori basilico e insalata, vaso grande sole 6 ore, annaffia sera e togli erbacce."
+  },
+  {
+    "input": "it_095: Come cucio un bottone?",
+    "thinking": "Sport-hobby: cucito, croce gambo e nodo.",
+    "output": "Infila filo doppio, fai croce 4 volte, crea gambo avvolgendo e fissa con nodo dietro."
+  },
+  {
+    "input": "it_096: Come scrivo un diario?",
+    "thinking": "Sport-hobby: diario, brevita e rilettura mensile.",
+    "output": "Scrivi 5 righe la sera, nota un fatto bello e uno da migliorare, rileggi a fine mese."
+  },
+  {
+    "input": "it_097: Come imparo gli scacchi?",
+    "thinking": "Sport-hobby: scacchi, regole partite brevi e finali.",
+    "output": "Impara movimenti e arrocco, gioca partite da 10 minuti, rivedi errori e studia un finale base."
+  },
+  {
+    "input": "it_098: Come vado in bici in sicurezza?",
+    "thinking": "Sport-hobby: bici, checklist e segnalazioni.",
+    "output": "Controlla freni e casco, usa luci la sera, resta a destra e segnala con la mano."
+  },
+  {
+    "input": "it_099: Come faccio trekking leggero?",
+    "thinking": "Sport-hobby: cammini, sentiero acqua e luce.",
+    "output": "Scegli sentiero segnato, porta acqua giacca e mappa offline, parti presto e torna con luce."
+  },
+  {
+    "input": "it_100: Come guardo gli uccelli al parco?",
+    "thinking": "Sport-hobby: birdwatching, orario silenzio e ascolto.",
+    "output": "Vai al mattino presto, porta binocolo leggero, resta fermo e ascolta prima di guardare."
+  },
+  {
+    "input": "it_101: Come accudisco un gatto?",
+    "thinking": "Animali: gatto, routine cibo lettiera e gioco.",
+    "output": "Dai cibo regolare e acqua fresca, pulisci lettiera ogni giorno, spazzola e gioca 10 minuti."
+  },
+  {
+    "input": "it_102: Come porto a spasso il cane?",
+    "thinking": "Animali: cane, passeggiata etica e premi.",
+    "output": "Usa guinzaglio e sacchetti, fai pause annuso, evita ore calde e premia buon comportamento."
+  },
+  {
+    "input": "it_103: Come scelgo cibo per il cane?",
+    "thinking": "Animali: alimentazione, etichetta e transizione lenta.",
+    "output": "Leggi etichetta con proteine prime, evita troppi additivi, cambia gradualmente in 7 giorni."
+  },
+  {
+    "input": "it_104: Come pulisco la gabbia del criceto?",
+    "thinking": "Animali: piccoli roditori, sicurezza e asciugatura.",
+    "output": "Sposta animale in scatola sicura, cambia lettiera, lava con acqua calda e asciuga bene."
+  },
+  {
+    "input": "it_105: Come accolgo un pesce rosso?",
+    "thinking": "Animali: acquario, filtro e cambi parziali.",
+    "output": "Usa vasca grande con filtro, condiziona acqua, dai poco cibo due volte e cambia parte acqua weekly."
+  },
+  {
+    "input": "it_106: Come calmo un cane che abbaia?",
+    "thinking": "Animali: comportamento, causa arricchimento e rinforzo calma.",
+    "output": "Capisci causa noia o paura, arricchisci con giochi, ignora abbaio per attenzione e premia calma."
+  },
+  {
+    "input": "it_107: Come taglio le unghie al gatto?",
+    "thinking": "Animali: toelettatura, solo punta e calma.",
+    "output": "Usa tronchesina piccola, taglia solo punta chiara, ferma se sanguina e premia dopo."
+  },
+  {
+    "input": "it_108: Come viaggio col gatto in auto?",
+    "thinking": "Animali: viaggio, trasportino e mai solo.",
+    "output": "Usa trasportino sicuro, copri con telo, fai pause e non lasciarlo mai solo al caldo."
+  },
+  {
+    "input": "it_109: Come presento due gatti?",
+    "thinking": "Animali: convivenza, gradualita odori e cibo.",
+    "output": "Tieni stanze separate, scambia odori con panni, incontri brevi con cibo e aumenta piano."
+  },
+  {
+    "input": "it_110: Come pulisco le orecchie del cane?",
+    "thinking": "Animali: igiene, solo esterno e vet se rosso.",
+    "output": "Usa soluzione specifica e garza, pulisci solo parte visibile, fermati se arrossato e vai dal vet."
+  },
+  {
+    "input": "it_111: Come gioco col pappagallo?",
+    "thinking": "Animali: uccelli, arricchimento e rispetto segnali.",
+    "output": "Offri legnetti e puzzle cibo, parla dolce, sessioni brevi e rispetta se si allontana."
+  },
+  {
+    "input": "it_112: Come scelgo un acquario piccolo?",
+    "thinking": "Animali: setup, volume minimo e maturazione.",
+    "output": "Prendi almeno 40 litri con filtro e riscaldatore, avvia ciclo due settimane prima dei pesci."
+  },
+  {
+    "input": "it_113: Come capisco se il cane sta bene?",
+    "thinking": "Animali: salute, quattro segnali base e vet.",
+    "output": "Guarda appetito energia feci e pelo lucido, misura febbre solo se sospetta e senti vet."
+  },
+  {
+    "input": "it_114: Come proteggo animali dal caldo?",
+    "thinking": "Animali: estate, ombra acqua e orari freschi.",
+    "output": "Dai ombra e acqua fresca, evita passeggiate a mezzogiorno e mai in auto chiusa."
+  },
+  {
+    "input": "it_115: Come adotto un cane dal canile?",
+    "thinking": "Animali: adozione, visite e adattamento lento.",
+    "output": "Visita piu volte, chiedi carattere e salute, prepara casa e dai tempo di adattamento."
+  },
+  {
+    "input": "it_116: Che tempo fara domani per uscire?",
+    "thinking": "Meteo-trasporti: previsione, app pioggia vento e ombrello.",
+    "output": "Controlla app meteo la sera, guarda pioggia e vento, porta ombrello pieghevole se incerto."
+  },
+  {
+    "input": "it_117: Come mi vesto con pioggia?",
+    "thinking": "Meteo-trasporti: abbigliamento, impermeabile e suole sicure.",
+    "output": "Indossa giacca impermeabile con cappuccio, scarpe antiscivolo e pantaloni che asciugano in fretta."
+  },
+  {
+    "input": "it_118: Come guido con nebbia?",
+    "thinking": "Meteo-trasporti: guida, luci giuste e distanza.",
+    "output": "Riduci velocita, accendi anabbaglianti e fendinebbia, aumenta distanza e non usare abbaglianti."
+  },
+  {
+    "input": "it_119: Come prendo un autobus in citta?",
+    "thinking": "Meteo-trasporti: bus, numero direzione e validazione.",
+    "output": "Controlla numero e direzione su app, sali dalla porta giusta, valida biglietto e scendi con anticipo."
+  },
+  {
+    "input": "it_120: Come compro un biglietto del treno regionale?",
+    "thinking": "Meteo-trasporti: regionale, app QR e conservazione.",
+    "output": "Usa app o macchinetta, scegli tratta e orario, paga e conserva QR fino a uscita."
+  },
+  {
+    "input": "it_121: Come affronto il traffico del mattino?",
+    "thinking": "Meteo-trasporti: pendolari, anticipo e piano B.",
+    "output": "Parti 15 minuti prima, ascolta info traffico, tieni percorso alternativo e acqua in auto."
+  },
+  {
+    "input": "it_122: Come parcheggio in centro?",
+    "thinking": "Meteo-trasporti: sosta, strisce app e foto promemoria.",
+    "output": "Cerca strisce blu e parchimetri, paga con app, fotografa posizione e rispetta orari."
+  },
+  {
+    "input": "it_123: Come viaggio in aereo low cost?",
+    "thinking": "Meteo-trasporti: volo, checkin peso e borraccia vuota.",
+    "output": "Fai checkin online, rispetta peso bagaglio, porta snack vuoti da riempire dopo controlli."
+  },
+  {
+    "input": "it_124: Come supero il jet lag leggero?",
+    "thinking": "Meteo-trasporti: fuso, luce e orari locali.",
+    "output": "Dormi in orari locali da subito, prendi luce del giorno, evita pisolini lunghi il primo giorno."
+  },
+  {
+    "input": "it_125: Come uso il monopattino elettrico?",
+    "thinking": "Meteo-trasporti: micro mobilita, casco e divieto doppio.",
+    "output": "Controlla batteria e freni, usa casco e pista ciclabile, non andare in due e parcheggia bene."
+  },
+  {
+    "input": "it_126: Come chiedo informazioni in stazione?",
+    "thinking": "Meteo-trasporti: assistenza, dati pronti e brevita.",
+    "output": "Vai a punto info con binario e orario pronti, chiedi in modo breve e ringrazia."
+  },
+  {
+    "input": "it_127: Come proteggo il telefono in viaggio?",
+    "thinking": "Tecnologia: device, cover backup e pin.",
+    "output": "Metti cover e pellicola, attiva backup cloud, usa pin e non lasciarlo sul tavolo."
+  },
+  {
+    "input": "it_128: Come libero spazio sul telefono?",
+    "thinking": "Tecnologia: memoria, app cloud e riavvio.",
+    "output": "Cancella app inutili, sposta foto su cloud, svuota chat grandi e riavvia."
+  },
+  {
+    "input": "it_129: Come creo una password sicura?",
+    "thinking": "Tecnologia: sicurezza, frase unica e gestore.",
+    "output": "Usa frase lunga con numeri e simboli, diversa per ogni sito e salva in gestore."
+  },
+  {
+    "input": "it_130: Come evito truffe via email?",
+    "thinking": "Tecnologia: phishing, verifica e segnalazione.",
+    "output": "Non aprire allegati strani, verifica mittente, non cliccare link urgenti e segnala phishing."
+  },
+  {
+    "input": "it_131: Come faccio backup delle foto?",
+    "thinking": "Tecnologia: backup, auto cloud e copia esterna.",
+    "output": "Attiva backup automatico su cloud, verifica una volta al mese e tieni copia su disco esterno."
+  },
+  {
+    "input": "it_132: Come pulisco il computer lento?",
+    "thinking": "Tecnologia: pc, avvio e aggiornamenti.",
+    "output": "Disinstalla programmi inutili, disattiva avvio automatico, svuota cestino e aggiorna sistema."
+  },
+  {
+    "input": "it_133: Come collego wifi a casa?",
+    "thinking": "Tecnologia: rete, posizione router e chiave.",
+    "output": "Accendi router in posizione alta, usa nome e chiave sotto, collega prima telefono poi pc."
+  },
+  {
+    "input": "it_134: Come uso mappe offline?",
+    "thinking": "Tecnologia: mappe, download e preferiti.",
+    "output": "Scarica zona prima di partire, attiva GPS, salva hotel e fermate tra preferiti."
+  },
+  {
+    "input": "it_135: Come faccio videochiamate di gruppo?",
+    "thinking": "Tecnologia: chiamate, test e link anticipato.",
+    "output": "Scegli app comune, testa audio e camera, manda link in anticipo e silenzia se non parli."
+  },
+  {
+    "input": "it_136: Come proteggo la privacy sui social?",
+    "thinking": "Tecnologia: social, privato e revisione.",
+    "output": "Rendi profilo privato, limita tag e posizione, rivedi amici ogni sei mesi."
+  },
+  {
+    "input": "it_137: Come prenoto un tavolo al ristorante?",
+    "thinking": "Servizio ristorante: prenotazione chiara con conferma.",
+    "output": "Chiama o usa app, indica data ora e persone, conferma il giorno prima e arriva puntuale."
+  },
+  {
+    "input": "it_138: Come ordino un cappuccino al bar?",
+    "thinking": "Bar italiano: ordine semplice con varianti latte.",
+    "output": "Chiedi al banco o al tavolo, specifica se deca o con latte di avena e paga alla cassa."
+  },
+  {
+    "input": "it_139: Come compro frutta al mercato rionale?",
+    "thinking": "Mercato: scelta stagionale e prezzi esposti.",
+    "output": "Scegli banchi con prezzi esposti, chiedi assaggio, compra stagionale e paga contanti piccoli."
+  },
+  {
+    "input": "it_140: Come visito un museo con bambini?",
+    "thinking": "Famiglia museo: percorso breve pause e gioco.",
+    "output": "Scegli percorso breve, porta snack e acqua, fai pause gioco e premi curiosita."
+  },
+  {
+    "input": "it_141: Come organizzo una festa di compleanno?",
+    "thinking": "Festa: lista base torta musica e giochi.",
+    "output": "Fissa data e invitati, ordina torta semplice, prepara musica e giochi brevi."
+  },
+  {
+    "input": "it_142: Come pulisco occhiali senza graffi?",
+    "thinking": "Cura oggetti: acqua neutro e microfibra.",
+    "output": "Sciacqua con acqua tiepida, usa sapone neutro e panno microfibra, evita magliette."
+  },
+  {
+    "input": "it_143: Come stendo i panni in inverno?",
+    "thinking": "Bucato: distanza calore e rotazione.",
+    "output": "Strizza bene, distanzia capi, metti vicino a fonte calore arieggiata e gira dopo ore."
+  },
+  {
+    "input": "it_144: Come preparo valigia per montagna?",
+    "thinking": "Montagna: strati e scarponi rodati.",
+    "output": "Porta strati termici, guscio pioggia, scarponi rodati, borraccia e crema sole."
+  },
+  {
+    "input": "it_145: Come scelgo pane fresco?",
+    "thinking": "Pane: crosta profumo e tela.",
+    "output": "Tocca crosta croccante, annusa profumo, compra in forni con turni e conserva in tela."
+  },
+  {
+    "input": "it_146: Come faccio aperitivo a casa?",
+    "thinking": "Aperitivo: stuzzichini e versione analcolica.",
+    "output": "Prepara stuzzichini semplici, cocktail leggero analcolico, ghiaccio e musica bassa."
+  },
+  {
+    "input": "it_147: Come annaffio basilico sul balcone?",
+    "thinking": "Balcone verde: sera potatura e riparo.",
+    "output": "Dai acqua sera senza bagnare foglie, pota cime spesso e proteggi da vento forte."
+  },
+  {
+    "input": "it_148: Come carico bici in treno?",
+    "thinking": "Bici treno: posto dedicato e legatura.",
+    "output": "Prenota posto bici se richiesto, usa scomparto dedicato e lega telaio con cinghia."
+  },
+  {
+    "input": "it_149: Come chiedo sconto in negozio piccolo?",
+    "thinking": "Negozio: gentilezza e doppia proposta.",
+    "output": "Chiedi gentile se possibile, compra due pezzi e accetta no con sorriso."
+  },
+  {
+    "input": "it_150: Come trovo farmacia di turno?",
+    "thinking": "Farmacia: app cartello e chiamata.",
+    "output": "Cerca app o cartello in farmacia vicina, chiama prima e porta tessera sanitaria."
+  },
+  {
+    "input": "sql_151: Elenca tutti i libri con prezzo sotto 20 euro. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 151.",
+    "output": "SELECT titolo, prezzo FROM libri WHERE prezzo < 20;"
+  },
+  {
+    "input": "sql_152: Trova studenti con voto maggiore di 28. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 152.",
+    "output": "SELECT nome, voto FROM studenti WHERE voto > 28;"
+  },
+  {
+    "input": "sql_153: Conta quanti ordini sopra 100 euro. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 153.",
+    "output": "SELECT COUNT(*) FROM ordini WHERE totale > 100;"
+  },
+  {
+    "input": "sql_154: Mostra prodotti in ordine di prezzo crescente. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 154.",
+    "output": "SELECT nome, prezzo FROM prodotti ORDER BY prezzo ASC;"
+  },
+  {
+    "input": "sql_155: Trova clienti di Roma. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 155.",
+    "output": "SELECT nome, email FROM clienti WHERE citta = 'Roma';"
+  },
+  {
+    "input": "sql_156: Elenca film dopo il 2015. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 156.",
+    "output": "SELECT titolo, anno FROM film WHERE anno > 2015;"
+  },
+  {
+    "input": "sql_157: Calcola prezzo medio dei prodotti. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 157.",
+    "output": "SELECT AVG(prezzo) FROM prodotti;"
+  },
+  {
+    "input": "sql_158: Trova dipendente con stipendio massimo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 158.",
+    "output": "SELECT nome, stipendio FROM dipendenti ORDER BY stipendio DESC LIMIT 1;"
+  },
+  {
+    "input": "sql_159: Conta studenti per corso. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 159.",
+    "output": "SELECT corso, COUNT(*) FROM studenti GROUP BY corso;"
+  },
+  {
+    "input": "sql_160: Mostra ordini degli ultimi 7 giorni. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 160.",
+    "output": "SELECT id, data FROM ordini WHERE data >= CURRENT_DATE - INTERVAL '7 days';"
+  },
+  {
+    "input": "sql_161: Trova libri di autore specifico. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 161.",
+    "output": "SELECT titolo FROM libri WHERE autore = 'Calvino';"
+  },
+  {
+    "input": "sql_162: Elenca prodotti esauriti. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 162.",
+    "output": "SELECT nome FROM prodotti WHERE quantita = 0;"
+  },
+  {
+    "input": "sql_163: Trova clienti senza email. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 163.",
+    "output": "SELECT nome FROM clienti WHERE email IS NULL;"
+  },
+  {
+    "input": "sql_164: Mostra i 5 prodotti piu cari. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 164.",
+    "output": "SELECT nome, prezzo FROM prodotti ORDER BY prezzo DESC LIMIT 5;"
+  },
+  {
+    "input": "sql_165: Conta film per genere. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 165.",
+    "output": "SELECT genere, COUNT(*) FROM film GROUP BY genere;"
+  },
+  {
+    "input": "sql_166: Trova ordini non spediti. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 166.",
+    "output": "SELECT id FROM ordini WHERE spedito = FALSE;"
+  },
+  {
+    "input": "sql_167: Calcola totale vendite per mese. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 167.",
+    "output": "SELECT mese, SUM(totale) FROM ordini GROUP BY mese;"
+  },
+  {
+    "input": "sql_168: Elenca studenti bocciati voto sotto 18. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 168.",
+    "output": "SELECT nome FROM studenti WHERE voto < 18;"
+  },
+  {
+    "input": "sql_169: Trova dipendenti assunti nel 2023. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 169.",
+    "output": "SELECT nome FROM dipendenti WHERE anno_assunzione = 2023;"
+  },
+  {
+    "input": "sql_170: Mostra ricette sotto 30 minuti. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 170.",
+    "output": "SELECT nome, minuti FROM ricette WHERE minuti < 30;"
+  },
+  {
+    "input": "sql_171: Trova viaggi sopra 500 euro. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 171.",
+    "output": "SELECT destinazione, prezzo FROM viaggi WHERE prezzo > 500;"
+  },
+  {
+    "input": "sql_172: Elenca animali adottabili. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 172.",
+    "output": "SELECT nome, specie FROM animali WHERE adottabile = TRUE;"
+  },
+  {
+    "input": "sql_173: Conta prodotti per categoria. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 173.",
+    "output": "SELECT categoria, COUNT(*) FROM prodotti GROUP BY categoria;"
+  },
+  {
+    "input": "sql_174: Trova libro piu economico. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 174.",
+    "output": "SELECT titolo, prezzo FROM libri ORDER BY prezzo ASC LIMIT 1;"
+  },
+  {
+    "input": "sql_175: Mostra clienti ordinati per cognome. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 175.",
+    "output": "SELECT cognome, nome FROM clienti ORDER BY cognome;"
+  },
+  {
+    "input": "sql_176: Elenca nome e data da ufficio del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 176.",
+    "output": "SELECT nome, data FROM ufficio WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_177: Trova top 3 per prezzo in palestra. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 177.",
+    "output": "SELECT nome, prezzo FROM palestra ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_178: Conta righe nella tabella farmacia con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 178.",
+    "output": "SELECT COUNT(*) FROM farmacia WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_179: Elenca nome e data da panetteria del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 179.",
+    "output": "SELECT nome, data FROM panetteria WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_180: Trova top 3 per prezzo in officina. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 180.",
+    "output": "SELECT nome, prezzo FROM officina ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_181: Conta righe nella tabella libreria con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 181.",
+    "output": "SELECT COUNT(*) FROM libreria WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_182: Elenca nome e data da magazzino del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 182.",
+    "output": "SELECT nome, data FROM magazzino WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_183: Trova top 3 per prezzo in scuola. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 183.",
+    "output": "SELECT nome, prezzo FROM scuola ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_184: Conta righe nella tabella cinema con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 184.",
+    "output": "SELECT COUNT(*) FROM cinema WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_185: Elenca nome e data da negozio del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 185.",
+    "output": "SELECT nome, data FROM negozio WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_186: Trova top 3 per prezzo in ufficio. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 186.",
+    "output": "SELECT nome, prezzo FROM ufficio ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_187: Conta righe nella tabella palestra con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 187.",
+    "output": "SELECT COUNT(*) FROM palestra WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_188: Elenca nome e data da farmacia del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 188.",
+    "output": "SELECT nome, data FROM farmacia WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_189: Trova top 3 per prezzo in panetteria. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 189.",
+    "output": "SELECT nome, prezzo FROM panetteria ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_190: Conta righe nella tabella officina con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 190.",
+    "output": "SELECT COUNT(*) FROM officina WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_191: Elenca nome e data da libreria del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 191.",
+    "output": "SELECT nome, data FROM libreria WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_192: Trova top 3 per prezzo in magazzino. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 192.",
+    "output": "SELECT nome, prezzo FROM magazzino ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_193: Conta righe nella tabella scuola con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 193.",
+    "output": "SELECT COUNT(*) FROM scuola WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_194: Elenca nome e data da cinema del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 194.",
+    "output": "SELECT nome, data FROM cinema WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_195: Trova top 3 per prezzo in negozio. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 195.",
+    "output": "SELECT nome, prezzo FROM negozio ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_196: Conta righe nella tabella ufficio con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 196.",
+    "output": "SELECT COUNT(*) FROM ufficio WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_197: Elenca nome e data da palestra del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 197.",
+    "output": "SELECT nome, data FROM palestra WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_198: Trova top 3 per prezzo in farmacia. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 198.",
+    "output": "SELECT nome, prezzo FROM farmacia ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_199: Conta righe nella tabella panetteria con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 199.",
+    "output": "SELECT COUNT(*) FROM panetteria WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_200: Elenca nome e data da officina del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 200.",
+    "output": "SELECT nome, data FROM officina WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_201: Trova top 3 per prezzo in libreria. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 201.",
+    "output": "SELECT nome, prezzo FROM libreria ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_202: Conta righe nella tabella magazzino con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 202.",
+    "output": "SELECT COUNT(*) FROM magazzino WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_203: Elenca nome e data da scuola del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 203.",
+    "output": "SELECT nome, data FROM scuola WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_204: Trova top 3 per prezzo in cinema. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 204.",
+    "output": "SELECT nome, prezzo FROM cinema ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_205: Conta righe nella tabella negozio con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 205.",
+    "output": "SELECT COUNT(*) FROM negozio WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_206: Elenca nome e data da ufficio del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 206.",
+    "output": "SELECT nome, data FROM ufficio WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_207: Trova top 3 per prezzo in palestra. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 207.",
+    "output": "SELECT nome, prezzo FROM palestra ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_208: Conta righe nella tabella farmacia con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 208.",
+    "output": "SELECT COUNT(*) FROM farmacia WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_209: Elenca nome e data da panetteria del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 209.",
+    "output": "SELECT nome, data FROM panetteria WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_210: Trova top 3 per prezzo in officina. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 210.",
+    "output": "SELECT nome, prezzo FROM officina ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_211: Conta righe nella tabella libreria con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 211.",
+    "output": "SELECT COUNT(*) FROM libreria WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_212: Elenca nome e data da magazzino del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 212.",
+    "output": "SELECT nome, data FROM magazzino WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_213: Trova top 3 per prezzo in scuola. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 213.",
+    "output": "SELECT nome, prezzo FROM scuola ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_214: Conta righe nella tabella cinema con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 214.",
+    "output": "SELECT COUNT(*) FROM cinema WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_215: Elenca nome e data da negozio del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 215.",
+    "output": "SELECT nome, data FROM negozio WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_216: Trova top 3 per prezzo in ufficio. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 216.",
+    "output": "SELECT nome, prezzo FROM ufficio ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_217: Conta righe nella tabella palestra con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 217.",
+    "output": "SELECT COUNT(*) FROM palestra WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_218: Elenca nome e data da farmacia del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 218.",
+    "output": "SELECT nome, data FROM farmacia WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_219: Trova top 3 per prezzo in panetteria. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 219.",
+    "output": "SELECT nome, prezzo FROM panetteria ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_220: Conta righe nella tabella officina con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 220.",
+    "output": "SELECT COUNT(*) FROM officina WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_221: Elenca nome e data da libreria del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 221.",
+    "output": "SELECT nome, data FROM libreria WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_222: Trova top 3 per prezzo in magazzino. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 222.",
+    "output": "SELECT nome, prezzo FROM magazzino ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "sql_223: Conta righe nella tabella scuola con stato attivo. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 223.",
+    "output": "SELECT COUNT(*) FROM scuola WHERE stato = 'attivo';"
+  },
+  {
+    "input": "sql_224: Elenca nome e data da cinema del 2024. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 224.",
+    "output": "SELECT nome, data FROM cinema WHERE anno = 2024;"
+  },
+  {
+    "input": "sql_225: Trova top 3 per prezzo in negozio. Contesto: tabella semplice con colonne nome/prezzo/stato.",
+    "thinking": "Serve query SQL semplice e sicura, uso SELECT con filtro o ordinamento adatto alla richiesta 225.",
+    "output": "SELECT nome, prezzo FROM negozio ORDER BY prezzo DESC LIMIT 3;"
+  },
+  {
+    "input": "js_226: Somma elementi di un array.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 226.",
+    "output": "const sum = arr.reduce((a,b)=>a+b,0);"
+  },
+  {
+    "input": "js_227: Inverti una stringa.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 227.",
+    "output": "const rev = s.split('').reverse().join('');"
+  },
+  {
+    "input": "js_228: Trova massimo in array.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 228.",
+    "output": "const mx = Math.max(...nums);"
+  },
+  {
+    "input": "js_229: Filtra numeri pari.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 229.",
+    "output": "const pari = nums.filter(n=>n%2===0);"
+  },
+  {
+    "input": "js_230: Raddoppia valori con map.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 230.",
+    "output": "const doppio = nums.map(n=>n*2);"
+  },
+  {
+    "input": "js_231: Controlla se array vuoto.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 231.",
+    "output": "const vuota = arr.length===0;"
+  },
+  {
+    "input": "js_232: Unisci due array.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 232.",
+    "output": "const tutto = [...a, ...b];"
+  },
+  {
+    "input": "js_233: Rimuovi duplicati.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 233.",
+    "output": "const unici = [...new Set(arr)];"
+  },
+  {
+    "input": "js_234: Ordina numeri crescente.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 234.",
+    "output": "const ord = nums.slice().sort((a,b)=>a-b);"
+  },
+  {
+    "input": "js_235: Conta occorrenze parola.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 235.",
+    "output": "const n = testo.split(' ').filter(w=>w===parola).length;"
+  },
+  {
+    "input": "js_236: Prima lettera maiuscola.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 236.",
+    "output": "const cap = s.charAt(0).toUpperCase()+s.slice(1);"
+  },
+  {
+    "input": "js_237: Verifica email semplice.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 237.",
+    "output": "const ok = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email);"
+  },
+  {
+    "input": "js_238: Genera numero casuale 1-10.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 238.",
+    "output": "const r = Math.floor(Math.random()*10)+1;"
+  },
+  {
+    "input": "js_239: Ritarda di 1 secondo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 239.",
+    "output": "await new Promise(r=>setTimeout(r,1000));"
+  },
+  {
+    "input": "js_240: Leggi valore da input.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 240.",
+    "output": "const v = document.querySelector('#nome').value.trim();"
+  },
+  {
+    "input": "js_241: Cambia testo di un div.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 241.",
+    "output": "document.querySelector('#msg').textContent = testo;"
+  },
+  {
+    "input": "js_242: Aggiungi elemento a lista.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 242.",
+    "output": "const li=document.createElement('li'); li.textContent=nome; lista.appendChild(li);"
+  },
+  {
+    "input": "js_243: Nascondi un elemento.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 243.",
+    "output": "el.style.display='none';"
+  },
+  {
+    "input": "js_244: Mostra o nascondi toggle.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 244.",
+    "output": "el.classList.toggle('nascosto');"
+  },
+  {
+    "input": "js_245: Salva in localStorage.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 245.",
+    "output": "localStorage.setItem('chiave', JSON.stringify(dati));"
+  },
+  {
+    "input": "js_246: Leggi da localStorage.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 246.",
+    "output": "const dati = JSON.parse(localStorage.getItem('chiave')||'[]');"
+  },
+  {
+    "input": "js_247: Fetch GET semplice.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 247.",
+    "output": "const r = await fetch(url); const dati = await r.json();"
+  },
+  {
+    "input": "js_248: Fetch POST JSON.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 248.",
+    "output": "await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(dati)});"
+  },
+  {
+    "input": "js_249: Formatta data gg/mm/aaaa.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 249.",
+    "output": "const f = new Date().toLocaleDateString('it-IT');"
+  },
+  {
+    "input": "js_250: Calcola giorni tra date.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 250.",
+    "output": "const g = Math.round((b-a)/86400000);"
+  },
+  {
+    "input": "js_251: Trasforma lista 25 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 251.",
+    "output": "const up25 = parole25.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_252: Trasforma lista 26 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 252.",
+    "output": "const up26 = parole26.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_253: Trasforma lista 27 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 253.",
+    "output": "const up27 = parole27.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_254: Trasforma lista 28 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 254.",
+    "output": "const up28 = parole28.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_255: Trasforma lista 29 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 255.",
+    "output": "const up29 = parole29.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_256: Trasforma lista 30 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 256.",
+    "output": "const up30 = parole30.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_257: Trasforma lista 31 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 257.",
+    "output": "const up31 = parole31.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_258: Trasforma lista 32 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 258.",
+    "output": "const up32 = parole32.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_259: Trasforma lista 33 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 259.",
+    "output": "const up33 = parole33.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_260: Trasforma lista 34 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 260.",
+    "output": "const up34 = parole34.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_261: Trasforma lista 35 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 261.",
+    "output": "const up35 = parole35.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_262: Trasforma lista 36 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 262.",
+    "output": "const up36 = parole36.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_263: Trasforma lista 37 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 263.",
+    "output": "const up37 = parole37.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_264: Trasforma lista 38 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 264.",
+    "output": "const up38 = parole38.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_265: Trasforma lista 39 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 265.",
+    "output": "const up39 = parole39.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_266: Trasforma lista 40 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 266.",
+    "output": "const up40 = parole40.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_267: Trasforma lista 41 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 267.",
+    "output": "const up41 = parole41.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_268: Trasforma lista 42 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 268.",
+    "output": "const up42 = parole42.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_269: Trasforma lista 43 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 269.",
+    "output": "const up43 = parole43.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_270: Trasforma lista 44 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 270.",
+    "output": "const up44 = parole44.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_271: Trasforma lista 45 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 271.",
+    "output": "const up45 = parole45.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_272: Trasforma lista 46 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 272.",
+    "output": "const up46 = parole46.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_273: Trasforma lista 47 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 273.",
+    "output": "const up47 = parole47.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_274: Trasforma lista 48 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 274.",
+    "output": "const up48 = parole48.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_275: Trasforma lista 49 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 275.",
+    "output": "const up49 = parole49.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_276: Trasforma lista 50 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 276.",
+    "output": "const up50 = parole50.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_277: Trasforma lista 51 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 277.",
+    "output": "const up51 = parole51.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_278: Trasforma lista 52 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 278.",
+    "output": "const up52 = parole52.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_279: Trasforma lista 53 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 279.",
+    "output": "const up53 = parole53.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_280: Trasforma lista 54 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 280.",
+    "output": "const up54 = parole54.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_281: Trasforma lista 55 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 281.",
+    "output": "const up55 = parole55.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_282: Trasforma lista 56 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 282.",
+    "output": "const up56 = parole56.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_283: Trasforma lista 57 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 283.",
+    "output": "const up57 = parole57.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_284: Trasforma lista 58 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 284.",
+    "output": "const up58 = parole58.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_285: Trasforma lista 59 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 285.",
+    "output": "const up59 = parole59.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_286: Trasforma lista 60 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 286.",
+    "output": "const up60 = parole60.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_287: Trasforma lista 61 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 287.",
+    "output": "const up61 = parole61.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_288: Trasforma lista 62 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 288.",
+    "output": "const up62 = parole62.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_289: Trasforma lista 63 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 289.",
+    "output": "const up63 = parole63.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_290: Trasforma lista 64 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 290.",
+    "output": "const up64 = parole64.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_291: Trasforma lista 65 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 291.",
+    "output": "const up65 = parole65.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_292: Trasforma lista 66 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 292.",
+    "output": "const up66 = parole66.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_293: Trasforma lista 67 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 293.",
+    "output": "const up67 = parole67.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_294: Trasforma lista 68 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 294.",
+    "output": "const up68 = parole68.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_295: Trasforma lista 69 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 295.",
+    "output": "const up69 = parole69.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_296: Trasforma lista 70 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 296.",
+    "output": "const up70 = parole70.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_297: Trasforma lista 71 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 297.",
+    "output": "const up71 = parole71.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_298: Trasforma lista 72 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 298.",
+    "output": "const up72 = parole72.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_299: Trasforma lista 73 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 299.",
+    "output": "const up73 = parole73.map(w=>w.toUpperCase());"
+  },
+  {
+    "input": "js_300: Trasforma lista 74 in maiuscolo.",
+    "thinking": "Compito JavaScript base, scelgo metodo standard chiaro e breve adatto al caso 300.",
+    "output": "const up74 = parole74.map(w=>w.toUpperCase());"
+  }
+]

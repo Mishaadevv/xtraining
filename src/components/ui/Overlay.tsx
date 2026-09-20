@@ -2,9 +2,11 @@ import { useEffect, type ReactNode } from "react";
 import { AlertTriangle, Check, Info, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Button, IconButton } from "./primitives";
 import type { Toast } from "@/lib/types";
+import { Button, IconButton } from "./primitives";
 import { dismissToast } from "@/state/appStore";
+
+/* ------------------------------------------------------------------- Modal */
 
 export function Modal({
   open,
@@ -43,10 +45,10 @@ export function Modal({
       }}
     >
       <div
-        className="zq-rise flex max-h-[85vh] w-full flex-col overflow-hidden rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-[var(--shadow)]"
-        style={{ maxWidth: width }}
         role="dialog"
         aria-modal="true"
+        className="zq-rise flex max-h-[85vh] w-full flex-col overflow-hidden rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-[var(--shadow)]"
+        style={{ maxWidth: width }}
       >
         <header className="flex items-start justify-between gap-4 border-b border-[var(--border-soft)] px-4 py-3">
           <div className="min-w-0">
@@ -69,6 +71,8 @@ export function Modal({
     </div>
   );
 }
+
+/* ----------------------------------------------------------- ConfirmDialog */
 
 export function ConfirmDialog({
   open,
@@ -109,6 +113,8 @@ export function ConfirmDialog({
   );
 }
 
+/* -------------------------------------------------------------- ToastStack */
+
 const TOAST_ICONS = {
   info: <Info className="h-3.5 w-3.5" style={{ color: "var(--blue)" }} />,
   good: <Check className="h-3.5 w-3.5" style={{ color: "var(--green)" }} />,
@@ -137,7 +143,11 @@ export function ToastStack({ toasts }: { toasts: Toast[] }) {
               </p>
             ) : null}
           </div>
-          <IconButton onClick={() => dismissToast(toast.id)} title="Dismiss" className="h-6 w-6">
+          <IconButton
+            onClick={() => dismissToast(toast.id)}
+            title="Dismiss"
+            className="h-6 w-6"
+          >
             <X className="h-3 w-3" />
           </IconButton>
         </div>

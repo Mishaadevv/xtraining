@@ -41,6 +41,7 @@ import {
   removeDataset,
   resetWizard,
   revealPath,
+  validateAllDatasets,
   validateDataset,
   wizardSelectDataset,
 } from "@/state/appStore";
@@ -150,8 +151,8 @@ function DatasetDetail({ dataset }: { dataset: DatasetEntry }) {
         <KeyValue label="Est. tokens / sample" value={formatCount(stats?.est_tokens_avg ?? null)} />
         <KeyValue
           label="Unusable"
-          value={formatCount(stats?.empty ?? 0)}
-          tone={stats?.empty ? "warn" : undefined}
+          value={formatCount(stats?.unusable ?? 0)}
+          tone={stats?.unusable ? "warn" : undefined}
         />
       </div>
 
@@ -281,6 +282,7 @@ export function DatasetsPage() {
   };
 
   const selected = datasets.find((dataset) => dataset.id === selectedId) ?? datasets[0] ?? null;
+  const builtinCount = datasets.filter((dataset) => dataset.builtin).length;
 
   const openPreview = async (dataset: DatasetEntry) => {
     setPreviewFor(dataset);
@@ -298,7 +300,7 @@ export function DatasetsPage() {
         title="Datasets"
         subtitle={
           datasets.length
-            ? `${datasets.length} imported · JSON, JSONL, CSV, TXT, Parquet, folders and the Hugging Face Hub`
+            ? `${datasets.length} available${builtinCount ? ` (${builtinCount} built-in)` : ""} · JSON, JSONL, CSV, TXT, Parquet, folders and the Hugging Face Hub`
             : "Import JSON, JSONL, CSV, TXT, Parquet, a folder of shards, or a Hub dataset"
         }
         actions={
@@ -307,11 +309,8 @@ export function DatasetsPage() {
               size="sm"
               variant="quiet"
               icon={<RefreshCw className="h-3.5 w-3.5" />}
-              onClick={() => {
-                for (const dataset of datasets) {
-                  void validateDataset(dataset.id);
-                }
-              }}
+              onClick={() => void validateAllDatasets()}
+              loading={busy.validateAll}
               disabled={!datasets.length}
             >
               Validate all
@@ -395,10 +394,13 @@ export function DatasetsPage() {
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1">
-                    <Badge tone={STATUS_TONE[dataset.status]}>
-                      <Dot tone={dataset.status === "ok" ? "good" : dataset.status === "errors" ? "bad" : dataset.status === "warnings" ? "warn" : "neutral"} />
-                      {dataset.status}
-                    </Badge>
+                    <span className="flex items-center gap-1">
+                      {dataset.builtin ? <Badge tone="info">built-in</Badge> : null}
+                      <Badge tone={STATUS_TONE[dataset.status]}>
+                        <Dot tone={dataset.status === "ok" ? "good" : dataset.status === "errors" ? "bad" : dataset.status === "warnings" ? "warn" : "neutral"} />
+                        {dataset.status}
+                      </Badge>
+                    </span>
                     <span className="flex items-center gap-0.5">
                       <IconButton
                         title="Preview normalised samples"
@@ -410,16 +412,18 @@ export function DatasetsPage() {
                       >
                         <Eye className="h-3 w-3" />
                       </IconButton>
-                      <IconButton
-                        title="Remove from the library"
-                        className="h-6 w-6"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setPendingDelete(dataset);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </IconButton>
+                      {dataset.builtin ? null : (
+                        <IconButton
+                          title="Remove from the library"
+                          className="h-6 w-6"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setPendingDelete(dataset);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </IconButton>
+                      )}
                     </span>
                   </span>
                 </button>

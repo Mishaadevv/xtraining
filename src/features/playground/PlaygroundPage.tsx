@@ -1,5 +1,8 @@
 import { useState } from "react";
 import {
+  Brain,
+  ChevronDown,
+  ChevronRight,
   FlaskConical,
   Play,
   Send,
@@ -20,6 +23,7 @@ import {
   Note,
   Panel,
   PanelHeader,
+  Switch,
   Textarea,
 } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
@@ -65,6 +69,33 @@ function Slider({
   );
 }
 
+function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const [open, setOpen] = useState(true);
+  if (!text) return null;
+  return (
+    <div className="rounded-[10px] border border-[var(--border-soft)] bg-[var(--panel-2)]">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        <Brain className="h-3.5 w-3.5" style={{ color: "var(--acc)" }} />
+        <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">
+          Thinking {streaming ? "…" : `· ${text.length} chars`}
+        </span>
+        {streaming ? <span className="zq-mono ml-auto text-[10.5px] text-[var(--acc)]">streaming</span> : null}
+      </button>
+      {open ? (
+        <pre className="zq-mono max-h-[220px] overflow-auto whitespace-pre-wrap border-t border-[var(--border-soft)] px-3 py-2.5 text-[11.5px] leading-[18px] text-[var(--text-2)]">
+          {text}
+          {streaming ? <span className="animate-pulse">▍</span> : null}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
 export function PlaygroundPage() {
   const { models, playground, env } = useStore(appStore);
   const [prompt, setPrompt] = useState("Explain what a LoRA adapter is in two sentences.");
@@ -74,6 +105,8 @@ export function PlaygroundPage() {
   const torchReady = Boolean(env.dependencies?.capabilities?.inference?.ready);
 
   const streamed = playground.generating ? playground.streamed : playground.output;
+  const thinkingStreamed = playground.generating ? playground.thinkingStreamed : playground.thinking;
+  const history0 = playground.history[0];
 
   return (
     <>
@@ -178,41 +211,55 @@ export function PlaygroundPage() {
             <Panel>
               <PanelHeader title="Sampling" description="Applies to the next generation." />
               <div className="space-y-3">
-                <Slider
-                  label="Max new tokens"
-                  value={playground.params.maxNewTokens}
-                  min={16}
-                  max={1024}
-                  step={16}
-                  onChange={(value) => setPlaygroundParams({ maxNewTokens: value })}
+                <Switch
+                  checked={playground.params.thinking}
+                  onChange={(checked) => setPlaygroundParams({ thinking: checked })}
+                  label="Thinking mode"
+                  description="The model first writes a private chain of thought, shown in its own panel below the answer. Works best with models that were trained to think."
                 />
-                <Slider
-                  label="Temperature"
-                  value={playground.params.temperature}
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  format={(value) => value.toFixed(2)}
-                  onChange={(value) => setPlaygroundParams({ temperature: value })}
-                />
-                <Slider
-                  label="Top-p"
-                  value={playground.params.topP}
-                  min={0.1}
-                  max={1}
-                  step={0.05}
-                  format={(value) => value.toFixed(2)}
-                  onChange={(value) => setPlaygroundParams({ topP: value })}
-                />
-                <Slider
-                  label="Repetition penalty"
-                  value={playground.params.repetitionPenalty}
-                  min={1}
-                  max={1.5}
-                  step={0.01}
-                  format={(value) => value.toFixed(2)}
-                  onChange={(value) => setPlaygroundParams({ repetitionPenalty: value })}
-                />
+                <div className="border-t border-[var(--border-soft)] pt-3">
+                  <Slider
+                    label="Max new tokens"
+                    value={playground.params.maxNewTokens}
+                    min={16}
+                    max={2048}
+                    step={16}
+                    onChange={(value) => setPlaygroundParams({ maxNewTokens: value })}
+                  />
+                  <div className="mt-3">
+                    <Slider
+                      label="Temperature"
+                      value={playground.params.temperature}
+                      min={0}
+                      max={1.5}
+                      step={0.05}
+                      format={(value) => value.toFixed(2)}
+                      onChange={(value) => setPlaygroundParams({ temperature: value })}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <Slider
+                      label="Top-p"
+                      value={playground.params.topP}
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      format={(value) => value.toFixed(2)}
+                      onChange={(value) => setPlaygroundParams({ topP: value })}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <Slider
+                      label="Repetition penalty"
+                      value={playground.params.repetitionPenalty}
+                      min={1}
+                      max={1.5}
+                      step={0.01}
+                      format={(value) => value.toFixed(2)}
+                      onChange={(value) => setPlaygroundParams({ repetitionPenalty: value })}
+                    />
+                  </div>
+                </div>
                 <p className="text-[11px] leading-[17px] text-[var(--text-3)]">
                   Temperature 0 makes generation deterministic (greedy), which is the quickest way to spot
                   whether training changed the model's behaviour at all.
@@ -224,6 +271,7 @@ export function PlaygroundPage() {
           <div className="space-y-4">
             <Panel>
               <PanelHeader
+                icon={<FlaskConical className="h-4 w-4" />}
                 title="Prompt"
                 description="The chat template of the base tokenizer is applied automatically when one exists."
               />
@@ -257,7 +305,7 @@ export function PlaygroundPage() {
                     disabled={!playground.loaded || !prompt.trim()}
                     onClick={() => void generateInPlayground(prompt, system)}
                   >
-                    Generate
+                    {playground.params.thinking ? "Think and answer" : "Generate"}
                   </Button>
                   <span className="text-[11.5px] text-[var(--text-3)]">⌘/Ctrl + Enter</span>
                 </div>
@@ -271,8 +319,8 @@ export function PlaygroundPage() {
                 description={
                   playground.generating
                     ? "Streaming tokens as they are produced"
-                    : playground.history[0]?.tokensPerSecond
-                      ? `${playground.history[0].tokensPerSecond} tokens/s · ${playground.history[0].seconds}s`
+                    : history0?.tokensPerSecond
+                      ? `${Math.round(history0.tokensPerSecond)} tokens/s · ${history0.seconds != null ? `${history0.seconds.toFixed(1)}s` : "—"}${history0.thinking ? ` · thought for ${history0.thinking.length} chars` : ""}`
                       : undefined
                 }
                 actions={
@@ -288,24 +336,33 @@ export function PlaygroundPage() {
                   ) : null
                 }
               />
-              {streamed ? (
-                <pre className="zq-mono max-h-[320px] min-h-[120px] overflow-auto whitespace-pre-wrap rounded-[10px] border border-[var(--border-soft)] bg-[var(--code-bg)] p-3 text-[12px] leading-[19px] text-[var(--text)]">
-                  {streamed}
-                  {playground.generating ? <span className="animate-pulse">▍</span> : null}
-                </pre>
-              ) : playground.loaded ? (
-                <EmptyState
-                  icon={<Play className="h-6 w-6" />}
-                  title="Ready when you are"
-                  description="Send a prompt to see what the trained model actually learned."
-                />
-              ) : (
-                <EmptyState
-                  icon={<Sparkles className="h-6 w-6" />}
-                  title="Load a model first"
-                  description="Pick a trained adapter or a local model folder on the left."
-                />
-              )}
+              <div className="space-y-3">
+                {thinkingStreamed ? (
+                  <ThinkingBlock text={thinkingStreamed} streaming={playground.generating && !streamed} />
+                ) : null}
+                {streamed ? (
+                  <pre className="zq-mono max-h-[320px] min-h-[120px] overflow-auto whitespace-pre-wrap rounded-[10px] border border-[var(--border-soft)] bg-[var(--code-bg)] p-3 text-[12px] leading-[19px] text-[var(--text)]">
+                    {streamed}
+                    {playground.generating ? <span className="animate-pulse">▍</span> : null}
+                  </pre>
+                ) : !thinkingStreamed && playground.loaded ? (
+                  <EmptyState
+                    icon={<Play className="h-6 w-6" />}
+                    title="Ready when you are"
+                    description={
+                      playground.params.thinking
+                        ? "Send a prompt — the model will think first, then answer."
+                        : "Send a prompt to see what the trained model actually learned."
+                    }
+                  />
+                ) : !thinkingStreamed ? (
+                  <EmptyState
+                    icon={<Sparkles className="h-6 w-6" />}
+                    title="Load a model first"
+                    description="Pick a trained adapter or a local model folder on the left."
+                  />
+                ) : null}
+              </div>
             </Panel>
 
             {playground.history.length > 0 ? (
@@ -315,6 +372,14 @@ export function PlaygroundPage() {
                   {playground.history.slice(1).map((entry, index) => (
                     <div key={index} className="rounded-[10px] border border-[var(--border-soft)] p-2.5">
                       <p className="truncate text-[12px] font-medium">{entry.prompt}</p>
+                      {entry.thinking ? (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-[11px] text-[var(--acc)]">thinking</summary>
+                          <p className="zq-mono mt-1 line-clamp-3 text-[10.5px] leading-[16px] text-[var(--text-3)]">
+                            {entry.thinking}
+                          </p>
+                        </details>
+                      ) : null}
                       <p className="mt-1 line-clamp-3 text-[11.5px] leading-[17px] text-[var(--text-2)]">
                         {entry.output}
                       </p>

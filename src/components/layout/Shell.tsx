@@ -6,15 +6,16 @@ import {
   Database,
   FlaskConical,
   FolderKanban,
-  Gauge,
   Play,
+  Plug,
   Settings as SettingsIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Badge, Dot } from "@/components/ui/primitives";
 import { useStore } from "@/state/store";
-import { appStore, navigate, type Page } from "@/state/appStore";
+import { navigate, type Page } from "@/state/appStore";
+import { appStore } from "@/state/appStore";
 
 const NAV: { page: Page; label: string; icon: ReactNode; group: string }[] = [
   { page: "projects", label: "Projects", icon: <FolderKanban className="h-3.5 w-3.5" />, group: "Work" },
@@ -27,11 +28,12 @@ const NAV: { page: Page; label: string; icon: ReactNode; group: string }[] = [
   { page: "settings", label: "Settings", icon: <SettingsIcon className="h-3.5 w-3.5" />, group: "System" },
 ];
 
+const GROUPS = ["Work", "Library", "System"];
+
 export function Sidebar() {
   const { page, env, runs, wizard, busy, datasets, models, projects } = useStore(appStore);
-  const activeRun = runs.find((run) => run.status === "running" || run.status === "starting");
+  const activeRun = runs.find((run) => run.status === "running" || run.status === "starting") ?? null;
 
-  const groups = ["Work", "Library", "System"];
   const cudaReady = Boolean(env.hardware?.cuda_ready);
   const pythonReady = Boolean(env.python?.available);
 
@@ -58,7 +60,7 @@ export function Sidebar() {
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[12px] font-medium">{activeRun.name}</span>
             <span className="zq-mono block text-[10.5px] text-[var(--text-3)]">
-              {activeRun.progress}% · step {activeRun.step}/{activeRun.totalSteps || "?"}
+              {Math.round(activeRun.progress)}% · step {activeRun.step}/{activeRun.totalSteps || "?"}
             </span>
           </span>
         </button>
@@ -73,15 +75,15 @@ export function Sidebar() {
         </button>
       )}
 
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-        {groups.map((group) => (
+      <nav className="zq-scroll flex min-h-0 flex-1 flex-col gap-0.5">
+        {GROUPS.map((group) => (
           <div key={group} className="mt-3 first:mt-0">
             <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-3)]">
               {group}
             </div>
             {NAV.filter((item) => item.group === group).map((item) => {
               const active = page === item.page;
-              const badgeCount =
+              const count =
                 item.page === "datasets" ? datasets.length
                   : item.page === "models" ? models.length
                     : item.page === "projects" ? projects.length
@@ -111,8 +113,8 @@ export function Sidebar() {
                   {item.page === "new" && busy.autoConfig ? (
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--acc)]" />
                   ) : null}
-                  {badgeCount > 0 && item.page !== "new" ? (
-                    <span className="zq-mono text-[10.5px] text-[var(--text-3)]">{badgeCount}</span>
+                  {count > 0 ? (
+                    <span className="zq-mono text-[10.5px] text-[var(--text-3)]">{count}</span>
                   ) : null}
                   {item.page === "new" && wizard.config && !active ? (
                     <span className="h-1.5 w-1.5 rounded-full bg-[var(--acc)]" />
@@ -127,7 +129,7 @@ export function Sidebar() {
       <div className="mt-3 space-y-2 border-t border-[var(--border-soft)] pt-3">
         <div className="flex items-center justify-between px-1.5">
           <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-3)]">
-            <Gauge className="h-3 w-3" />
+            <Plug className="h-3 w-3" />
             CUDA
           </span>
           <Badge tone={cudaReady ? "good" : "warn"}>
@@ -142,7 +144,6 @@ export function Sidebar() {
             {env.python?.version ?? "not found"}
           </Badge>
         </div>
-        <div className="px-1.5 pt-1 text-[10.5px] text-[var(--text-3)]">Zeqou ecosystem</div>
       </div>
     </aside>
   );

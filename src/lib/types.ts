@@ -1,4 +1,13 @@
-/** Types shared by the renderer, mirroring the Python backend payloads. */
+/**
+ * Types shared by the renderer.
+ *
+ * These mirror the payloads the Python backend and the Electron main process
+ * actually produce — snake_case for anything that crosses the Python boundary
+ * (training config, dataset reports, VRAM estimates) and camelCase for
+ * Electron-native records (runs, library entries, settings).
+ */
+
+/* ------------------------------------------------------------------ errors */
 
 export interface BackendError {
   code?: string;
@@ -7,25 +16,17 @@ export interface BackendError {
   traceback?: string;
 }
 
-export interface Result {
+export interface CallResult {
   ok: boolean;
   error?: BackendError;
   [key: string]: unknown;
 }
 
+/* -------------------------------------------------------------- training */
+
 export type Method = "lora" | "qlora" | "sft" | "full" | "scratch";
 export type Quantization = "none" | "4bit" | "8bit";
 export type Precision = "auto" | "bf16" | "fp16" | "fp32";
-
-export interface DatasetSelection {
-  /** Null for a Hub dataset, which is referenced by `hf_id` instead. */
-  path: string | null;
-  name?: string;
-  format: string;
-  mapping: DatasetMapping | null;
-  hf_id?: string | null;
-  split?: string;
-}
 
 export interface DatasetMapping {
   kind: "pair" | "chat" | "text" | "unknown";
@@ -35,9 +36,19 @@ export interface DatasetMapping {
   text_field?: string | null;
   messages_field?: string | null;
   messages_field_alternatives?: string[];
-  template?: string;
+  template?: string | null;
   auto?: boolean;
   fields?: string[];
+}
+
+export interface DatasetSelection {
+  /** Null for a Hub dataset, which is referenced by `hf_id` instead. */
+  path: string | null;
+  hf_id?: string | null;
+  name?: string;
+  format: string;
+  mapping: DatasetMapping | null;
+  split?: string;
 }
 
 export interface TrainingConfig {
@@ -67,7 +78,8 @@ export interface TrainingConfig {
   logging_steps: number;
   max_samples: number;
   seed: number;
-  device: "auto" | "cpu" | "cuda";
+  /** auto: CUDA when present; cuda: force GPU; cpu: force CPU; both = cuda-if-present (alias of auto for users). */
+  device: "auto" | "cpu" | "cuda" | "both";
   resume_from_checkpoint: string | null;
   dataset: DatasetSelection;
   trust_remote_code?: boolean;
@@ -86,6 +98,8 @@ export interface AutoReason {
   reason: string;
 }
 
+/* --------------------------------------------------------------- datasets */
+
 export interface ValidationIssue {
   severity: "error" | "warning" | "info";
   code: string;
@@ -101,17 +115,18 @@ export interface ValidationIssue {
 export interface DatasetReport {
   ok: boolean;
   status: "ok" | "warnings" | "errors";
-  error?: BackendError | null;
+  error: BackendError | null;
   issues: ValidationIssue[];
-  mapping: DatasetMapping;
   dataset: {
     path: string;
     name: string;
     format: string;
-    bytes?: number;
+    source?: string;
+    split?: string | null;
+    bytes: number | null;
     records: number;
-    files?: string[];
-    file_errors?: { file: string; message: string; code: string }[];
+    files: string[];
+    file_errors: { file: string; message: string; code: string }[];
     mixed_shapes?: { fields: string[]; files: string[] }[];
     container_key?: string | null;
     truncated?: boolean;
@@ -119,176 +134,22 @@ export interface DatasetReport {
   stats: {
     records?: number;
     usable?: number;
-    empty?: number;
-    empty_reasons?: Record<string, number>;
-    short?: number;
+    unusable?: number;
     duplicates?: number;
     over_length?: number;
+    very_short?: number;
     avg_chars?: number;
     max_chars?: number;
-    max_chars_index?: number;
     est_tokens_total?: number;
     est_tokens_avg?: number;
     roles?: Record<string, number>;
+    empty_reasons?: Record<string, number>;
     field_coverage?: Record<string, number>;
   };
   preview: string[];
+  mapping: DatasetMapping;
   sampled: boolean;
   context_length?: number;
-}
-
-export interface VramEstimate {
-  available: boolean;
-  reason?: string;
-  params?: number;
-  params_exact?: boolean;
-  trainable_params?: number;
-  weights_mb?: number;
-  gradients_mb?: number;
-  optimizer_mb?: number;
-  activations_mb?: number;
-  overhead_mb?: number;
-  estimated_total_mb?: number;
-  range_low_mb?: number;
-  range_high_mb?: number;
-  available_vram_mb?: number | null;
-  headroom_mb?: number | null;
-  verdict: "fits" | "tight" | "exceeds" | "unknown";
-  suggestions?: string[];
-  assumptions?: Record<string, unknown>;
-}
-
-export interface GpuDevice {
-  index: number;
-  name: string;
-  memory_total_mb?: number | null;
-  memory_used_mb?: number | null;
-  memory_free_mb?: number | null;
-  utilization_gpu?: number | null;
-  temperature_c?: number | null;
-  driver_version?: string | null;
-  compute_capability?: string | null;
-}
-
-export interface GpuSample {
-  available: boolean;
-  reason?: string | null;
-  gpu?: GpuDevice | null;
-  gpus?: GpuDevice[];
-  sampled_at: number;
-}
-
-export interface CudaInfo {
-  torch_installed: boolean;
-  torch_version?: string | null;
-  cuda_build_version?: string | null;
-  cudnn_version?: string | null;
-  available: boolean;
-  device_count?: number;
-  bf16_supported?: boolean;
-  devices: {
-    index: number;
-    name?: string;
-    total_memory_mb?: number;
-    compute_capability?: string;
-    error?: string;
-  }[];
-  reason?: string;
-}
-
-export interface HardwareSnapshot {
-  os: Record<string, string>;
-  python: { version: string; executable: string };
-  cpu: { model: string; logical_cores: number | null; architecture: string };
-  memory: { total_mb: number | null };
-  gpu: { available: boolean; reason?: string; gpus: GpuDevice[]; binary?: string };
-  cuda: CudaInfo;
-  cuda_toolkit: string | null;
-  nvidia_ready: boolean;
-  cuda_ready: boolean;
-  training_device: "cuda" | "cpu";
-  cuda_blockers: string[];
-}
-
-export interface DependencyPackage {
-  installed: boolean;
-  version: string | null;
-  pip: string;
-  group: string;
-  purpose: string;
-}
-
-export interface DependencyInfo {
-  python: { version: string; executable: string; implementation: string; platform: string };
-  packages: Record<string, DependencyPackage>;
-  missing_core: string[];
-  capabilities: Record<string, { ready: boolean; requires: string[]; missing: string[] }>;
-  training_ready: boolean;
-}
-
-export interface InstallPlan {
-  command: string;
-  argv: string[];
-  packages: string[];
-  cuda_tag: string | null;
-  note: string;
-}
-
-export interface BackendCapability {
-  name: string;
-  label: string;
-  methods: Method[];
-  requires: string[];
-  available: boolean;
-  missing: string[];
-}
-
-export interface PythonHealth {
-  available: boolean;
-  version?: string;
-  executable?: string;
-  label?: string;
-  command?: string;
-  args?: string[];
-  reason?: string;
-}
-
-export interface EnvSnapshot {
-  loading: boolean;
-  system: {
-    platform: string;
-    release: string;
-    hostname: string;
-    cpu: { model: string; logical_cores: number };
-    memory: { total_mb: number; free_mb: number };
-    uptime_seconds: number;
-    electron: string;
-    node: string;
-  } | null;
-  smi: GpuSample | null;
-  hardware: HardwareSnapshot | null;
-  python: (PythonHealth & { packageDir?: string; backendPresent?: boolean }) | null;
-  dependencies: DependencyInfo | null;
-  backends: BackendCapability[] | null;
-  installPlan: InstallPlan | null;
-  error: BackendError | null;
-  refreshedAt: number | null;
-}
-
-export interface Settings {
-  version: number;
-  interpreterPath: string | null;
-  cudaWheelTag: string;
-  hfCacheDir: string | null;
-  theme: "dark" | "light";
-  /** Off => the wizard uses the documented defaults and says so. */
-  autoConfigure: boolean;
-  /** The initial Simple/Advanced state of a new wizard. */
-  simpleMode: boolean;
-  advanced: {
-    trustRemoteCode: boolean;
-  };
-  lastProjectId: string | null;
 }
 
 export interface DatasetEntry {
@@ -296,20 +157,34 @@ export interface DatasetEntry {
   name: string;
   /** A local path, or the Hub dataset id when `format` is "hf". */
   path: string;
-  /** Set for Hugging Face Hub datasets. */
   hfId?: string;
   split?: string;
   format: string;
   isDirectory: boolean;
   sizeBytes: number | null;
   addedAt: number;
-  validatedAt?: number;
+  validatedAt?: number | null;
   records: number;
   usable: number;
   status: "ok" | "warnings" | "errors" | "unvalidated";
   mapping: DatasetMapping | null;
   issues: ValidationIssue[];
   report: DatasetReport | null;
+  /** Ships with the app; cannot be removed, report lives in memory. */
+  builtin?: boolean;
+  /** The built-in used when no dataset has been selected. */
+  default?: boolean;
+  lang?: string | null;
+  thinking?: boolean;
+}
+
+/* ----------------------------------------------------------------- models */
+
+export interface ModelIssue {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  hint?: string;
 }
 
 export interface ModelEntry {
@@ -338,9 +213,133 @@ export interface ModelEntry {
   finalLoss?: number | null;
   steps?: number;
   status?: string;
-  issues: ValidationIssue[];
+  totalParams?: number | null;
+  issues: ModelIssue[];
   addedAt: number;
   createdAt?: number;
+}
+
+/** What the backend reported about a model folder, before exporting it. */
+export interface ModelExportInfo {
+  path: string;
+  name: string;
+  files: string[];
+  weight_files: string[];
+  is_adapter: boolean;
+  adapter_config: Record<string, unknown> | null;
+  base_model: string | null;
+  checkpoints: string[];
+  size_bytes: number;
+  modes: {
+    copy: { ready: boolean };
+    merge: { ready: boolean; applicable: boolean; missing: string[] };
+  };
+  blockers: { code: string; message: string; hint: string }[];
+}
+
+export interface ModelInspectInfo {
+  name?: string;
+  source?: string;
+  kind?: string;
+  cached?: boolean;
+  cached_path?: string | null;
+  params?: number | null;
+  params_exact?: boolean;
+  size_bytes?: number | null;
+  max_position_embeddings?: number | null;
+  trainable?: boolean;
+  adapter?: boolean;
+  adapter_base?: string | null;
+  fields?: Record<string, unknown> & { architectures?: string[] };
+  issues?: ModelIssue[];
+}
+
+/* ---------------------------------------------------------------- runs */
+
+export type RunStatus =
+  | "starting"
+  | "running"
+  | "completed"
+  | "stopped"
+  | "paused"
+  | "failed";
+
+export interface CheckpointEntry {
+  path: string;
+  step: number;
+  sizeBytes?: number | null;
+  loss?: number | null;
+  epoch?: number | null;
+  hasOptimizer?: boolean;
+  createdAt?: number;
+}
+
+export interface GpuSummary {
+  samples: number;
+  peakUtilization: number;
+  averageUtilization: number;
+  peakVramMb: number;
+  peakTemperatureC: number;
+  device: string;
+}
+
+export interface RunRecord {
+  id: string;
+  projectId: string | null;
+  name: string;
+  method: Method;
+  baseModel: string;
+  datasetName: string | null;
+  datasetPath: string | null;
+  status: RunStatus;
+  phase: string;
+  progress: number;
+  step: number;
+  totalSteps: number;
+  loss: number | null;
+  evalLoss: number | null;
+  learningRate: number | null;
+  epoch: number;
+  elapsedSeconds: number;
+  etaSeconds: number | null;
+  samplesPerSecond: number | null;
+  secondsPerStep: number | null;
+  gpuMemoryAllocatedMb: number | null;
+  gpuMemoryReservedMb: number | null;
+  startedAt: number;
+  finishedAt: number | null;
+  runDir: string;
+  outputDir: string | null;
+  lastCheckpoint: string | null;
+  finalLoss: number | null;
+  config: TrainingConfig | null;
+  history: {
+    step?: number[];
+    loss?: number[];
+    eval_loss?: number[];
+    learning_rate?: number[];
+    grad_norm?: number[];
+    epoch?: number[];
+  } | null;
+  datasetReport: {
+    records?: number;
+    usable?: number;
+    mapping?: DatasetMapping;
+    source?: { name?: string; format?: string; path?: string };
+  } | null;
+  error: BackendError | null;
+  checkpoints: CheckpointEntry[];
+  gpuSummary?: GpuSummary | null;
+  runSizeBytes?: number | null;
+  trainableParams?: number | null;
+  totalParams?: number | null;
+  targetModules?: string[];
+  device?: string;
+  precision?: string;
+  optimizer?: string;
+  message?: string;
+  pendingAction?: "stopping" | "pausing" | null;
+  resumedFrom?: string | null;
 }
 
 export interface Project {
@@ -361,99 +360,201 @@ export interface Project {
   bestLoss: number | null;
 }
 
-export type RunStatus =
-  | "starting"
-  | "running"
-  | "completed"
-  | "stopped"
-  | "paused"
-  | "failed";
+/* ------------------------------------------------------------- estimates */
 
-export interface CheckpointEntry {
+export interface VramEstimate {
+  available: boolean;
+  reason?: string;
+  params?: number | null;
+  params_exact?: boolean;
+  trainable_params?: number | null;
+  weights_mb?: number | null;
+  gradients_mb?: number | null;
+  optimizer_mb?: number | null;
+  activations_mb?: number | null;
+  overhead_mb?: number | null;
+  estimated_total_mb?: number | null;
+  range_low_mb?: number | null;
+  range_high_mb?: number | null;
+  available_vram_mb?: number | null;
+  headroom_mb?: number | null;
+  verdict: "fits" | "tight" | "exceeds" | "unknown";
+  suggestions?: string[];
+}
+
+export interface InstallPlan {
+  command: string;
+  argv: string[];
+  packages: string[];
+  cuda_tag: string | null;
+  note?: string;
+}
+
+/* ------------------------------------------------------------- hardware */
+
+export interface GpuDevice {
+  index?: number;
   name?: string;
-  path: string;
-  step: number;
-  sizeBytes?: number;
-  loss?: number | null;
-  epoch?: number | null;
-  hasOptimizer?: boolean;
-  createdAt?: number;
+  memory_total_mb?: number | null;
+  memory_used_mb?: number | null;
+  memory_free_mb?: number | null;
+  utilization_gpu?: number | null;
+  utilization_memory?: number | null;
+  temperature_c?: number | null;
+  driver_version?: string | null;
+  compute_capability?: string | null;
 }
 
-export interface RunRecord {
-  id: string;
-  projectId: string | null;
+/** One nvidia-smi reading, sampled by the main process. */
+export interface GpuSample {
+  available: boolean;
+  reason?: string | null;
+  gpu?: GpuDevice | null;
+  gpus: GpuDevice[];
+  sampled_at?: number;
+}
+
+export interface CudaInfo {
+  torch_installed: boolean;
+  torch_version?: string | null;
+  cuda_build_version?: string | null;
+  cudnn_version?: string | null;
+  available: boolean;
+  device_count?: number;
+  bf16_supported?: boolean;
+  devices: {
+    index: number;
+    name?: string;
+    total_memory_mb?: number;
+    compute_capability?: string;
+    error?: string;
+  }[];
+  reason?: string;
+}
+
+export interface HardwareSnapshot {
+  os: { system?: string; release?: string; hostname?: string };
+  python: { version: string; executable: string };
+  cpu: { model: string; logical_cores: number | null; architecture: string };
+  memory: { total_mb: number | null };
+  gpu: { available: boolean; reason?: string; binary?: string; gpus: GpuDevice[] };
+  cuda: CudaInfo;
+  cuda_toolkit: string | null;
+  nvidia_ready: boolean;
+  cuda_ready: boolean;
+  training_device: "cuda" | "cpu";
+  cuda_blockers: string[];
+}
+
+/* ----------------------------------------------------------- environment */
+
+export interface DependencyPackage {
+  installed: boolean;
+  version: string | null;
+  pip: string;
+  group: string;
+  purpose: string;
+}
+
+export interface DependencyInfo {
+  python: { version: string; executable: string; implementation: string; platform: string };
+  packages: Record<string, DependencyPackage>;
+  missing_core: string[];
+  capabilities: Record<string, { ready: boolean; requires: string[]; missing: string[] }>;
+  training_ready: boolean;
+}
+
+export interface BackendCapability {
   name: string;
-  method: Method;
-  baseModel: string;
-  datasetName: string;
-  datasetPath: string;
-  status: RunStatus;
-  phase: string;
-  progress: number;
-  step: number;
-  totalSteps: number;
-  loss: number | null;
-  evalLoss: number | null;
-  learningRate: number | null;
-  gradNorm?: number | null;
-  epoch: number;
-  elapsedSeconds: number;
-  etaSeconds: number | null;
-  samplesPerSecond: number | null;
-  secondsPerStep: number | null;
-  gpuMemoryAllocatedMb: number | null;
-  gpuMemoryReservedMb: number | null;
-  startedAt: number;
-  finishedAt: number | null;
-  runDir: string;
-  outputDir: string | null;
-  lastCheckpoint: string | null;
-  finalLoss: number | null;
-  config: TrainingConfig;
-  history: { loss?: number[]; eval_loss?: number[]; lr?: number[]; grad_norm?: number[]; epoch?: number[]; step?: number[] } | null;
-  datasetReport: {
-    source?: { name?: string; format?: string; records?: number; path?: string };
-    mapping?: DatasetMapping;
-    records?: number;
-    samples?: number;
+  label: string;
+  methods: Method[];
+  requires: string[];
+  available: boolean;
+  missing: string[];
+}
+
+export interface PythonHealth {
+  available: boolean;
+  version?: string;
+  executable?: string;
+  label?: string;
+  reason?: string;
+  packageDir?: string;
+  backendPresent?: boolean;
+}
+
+/** A single interpreter candidate found on this machine. */
+export interface InterpreterCandidate {
+  command: string;
+  args?: string[];
+  label: string;
+  available: boolean;
+  reason?: string;
+  info?: { executable: string; version: string; implementation: string };
+}
+
+export interface EnvSnapshot {
+  loading: boolean;
+  system: {
+    platform: string;
+    release: string;
+    hostname: string;
+    cpu: { model: string; logical_cores: number };
+    memory: { total_mb: number; free_mb: number };
+    uptime_seconds: number;
+    electron: string;
+    node: string;
   } | null;
+  smi: GpuSample | null;
+  hardware: HardwareSnapshot | null;
+  python: PythonHealth | null;
+  dependencies: DependencyInfo | null;
+  backends: BackendCapability[] | null;
+  installPlan: InstallPlan | null;
   error: BackendError | null;
-  checkpoints: CheckpointEntry[];
-  gpuSummary?: {
-    samples: number;
-    peakUtilization: number;
-    averageUtilization: number;
-    peakVramMb: number;
-    peakTemperatureC: number;
-    device: string;
-  } | null;
-  runSizeBytes?: number;
-  trainableParams?: number;
-  totalParams?: number;
-  targetModules?: string[];
-  device?: string;
-  precision?: string;
-  optimizer?: string;
-  message?: string;
-  pendingAction?: string;
-  resumedFrom?: string | null;
+  refreshedAt: number | null;
 }
 
-export interface TrainingEventArgs {
-  runId: string;
-  event: string;
-  detail: Record<string, unknown>;
+/* -------------------------------------------------------------- settings */
+
+export interface Settings {
+  version: number;
+  interpreterPath: string | null;
+  cudaWheelTag: string;
+  hfCacheDir: string | null;
+  theme: "dark" | "light";
+  /** Off => the wizard uses the documented defaults and says so. */
+  autoConfigure: boolean;
+  /** The initial Simple/Advanced state of a new wizard. */
+  simpleMode: boolean;
+  advanced: {
+    trustRemoteCode: boolean;
+  };
+  lastProjectId: string | null;
 }
 
-export interface LogEntry {
-  key: string;
-  stream: "event" | "stderr" | "stdout";
-  level: "info" | "warn" | "error";
-  message: string;
-  at: number;
-  event?: string;
-  detail?: Record<string, unknown>;
+export interface TokenStorageInfo {
+  present: boolean;
+  encrypted: boolean;
+  backend?: string;
+  warning?: string;
+}
+
+/* ------------------------------------------------------------------ misc */
+
+export interface AppInfo {
+  name: string;
+  version: string;
+  platform: string;
+  electron: string;
+  node: string;
+  chrome: string;
+  userData: string;
+  runsDir: string;
+  modelsDir: string;
+  hfCacheDir: string;
+  backendDir: string;
+  encryptionAvailable: boolean;
 }
 
 export interface Toast {
@@ -461,4 +562,13 @@ export interface Toast {
   title: string;
   message?: string;
   tone: "info" | "good" | "warn" | "bad";
+}
+
+export interface LogEntry {
+  key: string;
+  stream: "event" | "stderr";
+  level: "info" | "warn" | "error";
+  message: string;
+  at: number;
+  event?: string;
 }

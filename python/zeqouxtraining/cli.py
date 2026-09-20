@@ -197,6 +197,8 @@ def cmd_auto_config(args: argparse.Namespace) -> int:
         if not available_vram:
             gpus = detected.get("gpu", {}).get("gpus") or []
             available_vram = float(gpus[0].get("memory_total_mb") or 0) if gpus else None
+        memory = detected.get("memory") or {}
+        available_ram = float(memory.get("total_mb") or 0) or None
 
         return {
             "hardware": detected,
@@ -205,7 +207,7 @@ def cmd_auto_config(args: argparse.Namespace) -> int:
             "dataset_report": dataset_report,
             "config": config,
             "reasons": suggested["reasons"],
-            "estimate": estimate(config, model_info, available_vram),
+            "estimate": estimate(config, model_info, available_vram, available_ram),
             "issues": validate(config, detected),
         }
 
@@ -254,7 +256,14 @@ def cmd_estimate(args: argparse.Namespace) -> int:
         model_info = _json_arg(args.model_info)
         if model_info is None and config.get("base_model"):
             model_info = inspect(str(config["base_model"]))
-        return estimate(config, model_info or {}, args.available_vram)
+        ram = args.available_ram
+        if ram is None:
+            try:
+                from .hardware import detect
+                ram = float((detect().get("memory") or {}).get("total_mb") or 0) or None
+            except Exception:
+                ram = None
+        return estimate(config, model_info or {}, args.available_vram, ram)
 
     return _guard(run, "estimate")
 
@@ -347,6 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
     estimate.add_argument("--config", default=None, help="JSON training config")
     estimate.add_argument("--model-info", default=None, help="JSON model info")
     estimate.add_argument("--available-vram", type=float, default=None, help="VRAM in MB")
+    estimate.add_argument("--available-ram", type=float, default=None, help="System RAM in MB")
 
     train = sub.add_parser("train", help="Run a training job")
     train.add_argument("--job", required=True)

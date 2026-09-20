@@ -3,7 +3,7 @@
 Works for both a local model folder and a Hugging Face repository id. Parameter
 counts are read from real files where possible:
 
-* ``model.safetensors.index.json`` → exact tensor count and file list
+* ``model.safetensors.index.json`` → exact tensor size and shard list
 * ``*.safetensors`` headers → exact parameter count, without loading weights
 * ``config.json`` → architecture, context length, dtype
 
@@ -19,10 +19,6 @@ from pathlib import Path
 from typing import Any
 
 WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt", ".pth", ".gguf")
-_DTYPE_BYTES = {
-    "F64": 8, "F32": 4, "F16": 2, "BF16": 2, "FP8": 1,
-    "I64": 8, "I32": 4, "I16": 2, "I8": 1, "U8": 1, "BOOL": 1,
-}
 
 _HF_ID_RE = re.compile(r"^[\w.\-]+/[\w.\-]+$")
 
@@ -56,13 +52,8 @@ def read_config_json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def safetensors_header_params(file_path: Path) -> int | None:
-    """Exact parameter count from a .safetensors header.
-
-    The format is: 8-byte little-endian header length, then a JSON header with
-    every tensor's dtype and shape. Reading it costs a few kilobytes regardless
-    of how large the model is.
-    """
+def _read_safetensors_header(file_path: Path) -> dict[str, Any] | None:
+    """Parse a .safetensors header: 8-byte length, then JSON tensor metadata."""
     try:
         with open(file_path, "rb") as handle:
             raw_length = handle.read(8)
@@ -74,17 +65,84 @@ def safetensors_header_params(file_path: Path) -> int | None:
             header = json.loads(handle.read(length).decode("utf-8", errors="replace"))
     except Exception:
         return None
+    return header if isinstance(header, dict) else None
+
+
+def safetensors_header_params(file_path: Path) -> int | None:
+    """Exact parameter count from a .safetensors header.
+
+    The header carries every tensor's dtype and shape, and costs a few
+    kilobytes to read regardless of how large the model is.
+    """
+    header = _read_safetensors_header(file_path)
+    if header is None:
+        return None
 
     total = 0
     for name, info in header.items():
         if name == "__metadata__" or not isinstance(info, dict):
             continue
-        shape = info.get("shape") or []
         count = 1
-        for dim in shape:
+        for dim in info.get("shape") or []:
             count *= int(dim)
         total += count
     return total or None
+
+
+def _peek_safetensors_keys(files: list[Path]) -> list[str]:
+    keys: list[str] = []
+    for file_path in files:
+        header = _read_safetensors_header(file_path)
+        if header:
+            keys.extend(k for k in header.keys() if k != "__metadata__")
+    return keys
+
+
+def estimate_params_from_config(config: dict[str, Any]) -> int | None:
+    """Parameter estimate from the architecture config (approximate by design)."""
+    if not config:
+        return None
+    hidden = config.get("hidden_size") or config.get("d_model") or config.get("n_embd")
+    layers = (config.get("num_hidden_layers") or config.get("n_layer")
+              or config.get("num_layers"))
+    vocab = config.get("vocab_size")
+    if not hidden or not layers:
+        return None
+
+    hidden = int(hidden)
+    layers = int(layers)
+    intermediate = int(config.get("intermediate_size") or config.get("n_inner") or hidden * 4)
+
+    attention = 4 * hidden * hidden
+    # Llama/Mistral-style gated MLP (gate, up, down).
+    mlp = 3 * hidden * intermediate
+    norms = 2 * hidden
+    total = layers * (attention + mlp + norms)
+
+    if vocab:
+        total += int(vocab) * hidden
+        if not config.get("tie_word_embeddings", False):
+            total += int(vocab) * hidden
+    return int(total)
+
+
+def _common_fields(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "architectures": config.get("architectures"),
+        "model_type": config.get("model_type"),
+        "hidden_size": config.get("hidden_size") or config.get("d_model") or config.get("n_embd"),
+        "num_hidden_layers": (config.get("num_hidden_layers") or config.get("n_layer")
+                              or config.get("num_layers")),
+        "num_attention_heads": config.get("num_attention_heads") or config.get("n_head"),
+        "vocab_size": config.get("vocab_size"),
+        "intermediate_size": (config.get("intermediate_size")
+                              or config.get("n_inner") or config.get("ffn_dim")),
+        "torch_dtype": config.get("torch_dtype"),
+        "tie_word_embeddings": config.get("tie_word_embeddings"),
+        "max_position_embeddings": (config.get("max_position_embeddings")
+                                    or config.get("n_positions")
+                                    or config.get("max_seq_len")),
+    }
 
 
 def inspect(source: str, hf_cache_dir: str | None = None) -> dict[str, Any]:
@@ -126,13 +184,14 @@ def _inspect_local(path: Path) -> dict[str, Any]:
         except Exception:
             adapter_config = {}
         adapter_base = str(adapter_config.get("base_model_name_or_path") or "") or None
+
     weight_files = sorted(
         p for p in path.iterdir() if p.is_file() and p.suffix.lower() in WEIGHT_SUFFIXES
     ) if path.is_dir() else []
 
     index_params = None
-    index_path = path / "model.safetensors.index.json"
     shard_files: list[str] = []
+    index_path = path / "model.safetensors.index.json"
     if index_path.is_file():
         try:
             index = json.loads(index_path.read_text(encoding="utf-8", errors="replace"))
@@ -146,10 +205,11 @@ def _inspect_local(path: Path) -> dict[str, Any]:
     params = None
     exact = False
     safetensors = [p for p in weight_files if p.suffix.lower() == ".safetensors"]
-    if safetensors and not shard_files:
+    for files in ([safetensors] if safetensors and not shard_files else
+                  [[path / name for name in shard_files if (path / name).is_file()]]):
         total = 0
         got_any = False
-        for file_path in safetensors:
+        for file_path in files:
             count = safetensors_header_params(file_path)
             if count:
                 total += count
@@ -157,24 +217,11 @@ def _inspect_local(path: Path) -> dict[str, Any]:
         if got_any:
             params = total
             exact = True
-    if params is None and shard_files:
-        total = 0
-        got_any = False
-        for name in shard_files:
-            file_path = path / name
-            if not file_path.is_file():
-                continue
-            count = safetensors_header_params(file_path)
-            if count:
-                total += count
-                got_any = True
-        if got_any:
-            params = total
-            exact = True
+            break
 
     if params is None:
-        params = estimate_params_from_config(config)
-        exact = False
+        params = index_params or estimate_params_from_config(config)
+        exact = bool(index_params)
 
     if adapter_base:
         # Only adapter matrices live here; the real parameter count belongs to
@@ -184,32 +231,18 @@ def _inspect_local(path: Path) -> dict[str, Any]:
 
     size_bytes = sum(p.stat().st_size for p in weight_files) if weight_files else None
     quantized_detected = any(
-        _weird_tensor_skip_line(key) for key in _peek_safetensors_keys(safetensors[:1])
+        key.endswith(".weight_scale") or key.endswith(".qweight")
+        for key in _peek_safetensors_keys(safetensors[:1])
     )
 
-    fields = {
-        "architectures": config.get("architectures"),
-        "model_type": config.get("model_type"),
-        "hidden_size": config.get("hidden_size") or config.get("d_model") or config.get("n_embd"),
-        "num_hidden_layers": (config.get("num_hidden_layers") or config.get("n_layer")
-                              or config.get("num_layers")),
-        "num_attention_heads": config.get("num_attention_heads") or config.get("n_head"),
-        "vocab_size": config.get("vocab_size"),
-        "intermediate_size": (config.get("intermediate_size")
-                              or config.get("n_inner") or config.get("ffn_dim")),
-        "torch_dtype": config.get("torch_dtype"),
-        "tie_word_embeddings": config.get("tie_word_embeddings"),
-        "max_position_embeddings": (config.get("max_position_embeddings")
-                                    or config.get("n_positions")
-                                    or config.get("max_seq_len")),
-    }
-
-    issues: list[dict[str, Any]] = []
+    fields = _common_fields(config)
     is_adapter = bool(adapter_base)
     if not config and is_adapter:
         # Adapter folders carry no config.json by design; the architecture comes
         # from the base model the adapter was trained on.
         config = {"model_type": "peft-adapter", "architectures": ["PeftAdapter"]}
+
+    issues: list[dict[str, Any]] = []
     if not config:
         issues.append({
             "severity": "error",
@@ -270,28 +303,6 @@ def _inspect_local(path: Path) -> dict[str, Any]:
     }
 
 
-def _weird_tensor_skip_line(key: str) -> bool:
-    return key.endswith(".weight_scale") or key.endswith(".qweight")
-
-
-def _peek_safetensors_keys(files: list[Path]) -> list[str]:
-    keys: list[str] = []
-    for file_path in files:
-        try:
-            with open(file_path, "rb") as handle:
-                raw_length = handle.read(8)
-                if len(raw_length) != 8:
-                    continue
-                length = struct.unpack("<Q", raw_length)[0]
-                if length <= 0 or length > 200 * 1024 * 1024:
-                    continue
-                header = json.loads(handle.read(length).decode("utf-8", errors="replace"))
-                keys.extend(k for k in header.keys() if k != "__metadata__")
-        except Exception:
-            continue
-    return keys
-
-
 def _inspect_hf(source: str, hf_cache_dir: str | None) -> dict[str, Any]:
     """Inspect a Hugging Face repo. Uses the local cache first, then the Hub."""
     issues: list[dict[str, Any]] = []
@@ -301,10 +312,9 @@ def _inspect_hf(source: str, hf_cache_dir: str | None) -> dict[str, Any]:
     exact = False
 
     try:
-        from huggingface_hub import hf_hub_download, scan_cache_dir  # noqa: PLC0415
+        from huggingface_hub import hf_hub_download  # noqa: PLC0415
     except Exception:
         hf_hub_download = None  # type: ignore[assignment]
-        scan_cache_dir = None  # type: ignore[assignment]
         issues.append({
             "severity": "warning",
             "code": "hub_missing",
@@ -321,6 +331,7 @@ def _inspect_hf(source: str, hf_cache_dir: str | None) -> dict[str, Any]:
             config = json.loads(Path(config_file).read_text(encoding="utf-8", errors="replace"))
             cached_path = str(Path(config_file).parent)
             params = estimate_params_from_config(config)
+            exact = False
         except Exception as exc:
             message = str(exc)
             if any(word in message.lower() for word in ("401", "403", "gated", "unauthorized")):
@@ -345,18 +356,7 @@ def _inspect_hf(source: str, hf_cache_dir: str | None) -> dict[str, Any]:
                     "hint": "Check the repository id.",
                 })
 
-    fields = {
-        "architectures": config.get("architectures"),
-        "model_type": config.get("model_type"),
-        "hidden_size": config.get("hidden_size"),
-        "num_hidden_layers": config.get("num_hidden_layers"),
-        "num_attention_heads": config.get("num_attention_heads"),
-        "vocab_size": config.get("vocab_size"),
-        "intermediate_size": config.get("intermediate_size"),
-        "torch_dtype": config.get("torch_dtype"),
-        "tie_word_embeddings": config.get("tie_word_embeddings"),
-        "max_position_embeddings": config.get("max_position_embeddings"),
-    }
+    fields = _common_fields(config)
 
     return {
         "kind": "huggingface",
@@ -378,36 +378,6 @@ def _inspect_hf(source: str, hf_cache_dir: str | None) -> dict[str, Any]:
         "max_position_embeddings": fields["max_position_embeddings"],
         "requires_download": not bool(cached_path),
     }
-
-
-def estimate_params_from_config(config: dict[str, Any]) -> int | None:
-    """Parameter estimate from the architecture config (approximate by design)."""
-    if not config:
-        return None
-    hidden = config.get("hidden_size") or config.get("d_model") or config.get("n_embd")
-    layers = (config.get("num_hidden_layers") or config.get("n_layer")
-              or config.get("num_layers"))
-    vocab = config.get("vocab_size")
-    if not hidden or not layers:
-        return None
-
-    hidden = int(hidden)
-    layers = int(layers)
-    intermediate = config.get("intermediate_size") or config.get("n_inner") or hidden * 4
-    intermediate = int(intermediate)
-
-    attention = 4 * hidden * hidden
-    # Llama/Mistral-style gated MLP (gate, up, down).
-    mlp = 3 * hidden * intermediate
-    norms = 2 * hidden
-    per_layer = attention + mlp + norms
-
-    total = layers * per_layer
-    if vocab:
-        total += int(vocab) * hidden
-        if not config.get("tie_word_embeddings", False):
-            total += int(vocab) * hidden
-    return int(total)
 
 
 def default_output_name(source: str, method: str) -> str:

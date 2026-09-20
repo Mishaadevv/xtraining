@@ -104,8 +104,8 @@ export function ChartsPanel({ series }: { series: SeriesPoint[] }) {
         labelY="loss"
         labelX="step"
         formatY={(value) => value.toFixed(3)}
-        emptyMessage="Loss will appear once the first logging step completes"
-        tooltipRows={(index) => {
+        emptyLabel="Loss will appear once the first logging step completes"
+        tooltip={(index: number) => {
           const point = lossPoints[index];
           if (!point) return [];
           const lr = lrPoints[index];
@@ -125,7 +125,7 @@ export function ChartsPanel({ series }: { series: SeriesPoint[] }) {
             labelY="learning rate"
             labelX="step"
             formatY={(value) => value.toExponential(1)}
-            emptyMessage="Learning rate schedule"
+            emptyLabel="Learning rate schedule"
           />
         </div>
       ) : null}
@@ -154,8 +154,8 @@ export function GpuPanel({
       <Panel>
         <PanelHeader icon={<HardDrive className="h-4 w-4" />} title="GPU" description="Live NVIDIA telemetry" />
         <Note tone="warn" title="No NVIDIA GPU detected">
-          {gpu?.reason ?? "nvidia-smi was not found on this machine."}
-          {" "}Training will use the CPU, and GPU metrics are unavailable.
+          {gpu?.reason ?? "nvidia-smi was not found on this machine."}{" "}
+          Training will use the CPU, and GPU metrics are unavailable.
         </Note>
         {run?.gpuSummary ? (
           <div className="mt-3">
@@ -425,7 +425,7 @@ export function RunControls({ run }: { run: RunRecord }) {
           onClick={() => void resumeRun(run.id)}
         >
           Resume from checkpoint
-        </Button>
+          </Button>
       ) : null}
     </div>
   );
@@ -481,4 +481,3 @@ export function EstimatePanel({ estimate }: { estimate: VramEstimate | null }) {
     </Panel>
   );
 }
-

@@ -2,14 +2,13 @@
 
 Two independent sources are used on purpose:
 
-* ``nvidia-smi`` — always available on a machine with a working NVIDIA driver,
-  even when PyTorch is not installed. This is the ground truth for "is there a
-  usable GPU here".
-* ``torch.cuda`` — the ground truth for "can PyTorch actually use it", including
-  the CUDA toolkit version the installed wheel was built against.
+* ``nvidia-smi`` — present whenever an NVIDIA driver works, even without
+  PyTorch. Ground truth for "is there a usable GPU here".
+* ``torch.cuda`` — ground truth for "can PyTorch actually use it", including
+  the CUDA version the installed wheel was built against.
 
-Nothing here is synthesized: if a value cannot be read, the field is ``None``
-and the caller is expected to show an honest "unknown" state.
+Nothing is synthesized: if a value cannot be read it stays ``None`` and the UI
+shows an honest "unknown".
 """
 
 from __future__ import annotations
@@ -59,13 +58,12 @@ def nvidia_smi_path() -> str | None:
     found = shutil.which("nvidia-smi")
     if found:
         return found
-    candidates = [
+    for path in (
         r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
         r"C:\Windows\System32\nvidia-smi.exe",
         "/usr/bin/nvidia-smi",
         "/usr/local/bin/nvidia-smi",
-    ]
-    for path in candidates:
+    ):
         if os.path.isfile(path):
             return path
     return None
@@ -110,15 +108,12 @@ def gpus_from_smi() -> dict[str, Any]:
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < len(_SMI_FIELDS):
             continue
-        total = _to_float(parts[2])
-        used = _to_float(parts[3])
-        free = _to_float(parts[4])
         gpus.append({
             "index": int(_to_float(parts[0]) or 0),
             "name": parts[1],
-            "memory_total_mb": total,
-            "memory_used_mb": used,
-            "memory_free_mb": free,
+            "memory_total_mb": _to_float(parts[2]),
+            "memory_used_mb": _to_float(parts[3]),
+            "memory_free_mb": _to_float(parts[4]),
             "utilization_gpu": _to_float(parts[5]),
             "temperature_c": _to_float(parts[6]),
             "driver_version": parts[7] or None,
@@ -217,15 +212,16 @@ def cpu_info() -> dict[str, Any]:
     except Exception:
         pass
 
-    model = None
-    if platform.system() == "Windows":
+    model: str | None = None
+    system = platform.system()
+    if system == "Windows":
         code, out, _ = _run([
             "powershell", "-NoProfile", "-Command",
             "(Get-CimInstance Win32_Processor).Name",
         ], timeout=15)
         if code == 0 and out.strip():
             model = out.strip().splitlines()[0].strip()
-    elif platform.system() == "Linux":
+    elif system == "Linux":
         try:
             with open("/proc/cpuinfo", encoding="utf-8") as handle:
                 for line in handle:
@@ -234,7 +230,7 @@ def cpu_info() -> dict[str, Any]:
                         break
         except Exception:
             pass
-    elif platform.system() == "Darwin":
+    elif system == "Darwin":
         code, out, _ = _run(["sysctl", "-n", "machdep.cpu.brand_string"], timeout=8)
         if code == 0:
             model = out.strip()

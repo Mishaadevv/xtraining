@@ -236,7 +236,7 @@ async function spawnBackend(commandArgs, options = {}) {
     throw new Error(`The Python backend package was not found at ${packageDir}.`);
   }
 
-  const child = spawn(
+  return spawn(
     interpreter.command,
     [...baseArgs(interpreter), ...commandArgs],
     {
@@ -245,7 +245,6 @@ async function spawnBackend(commandArgs, options = {}) {
       windowsHide: true,
     },
   );
-  return child;
 }
 
 /**

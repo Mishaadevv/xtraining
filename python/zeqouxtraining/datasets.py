@@ -1,17 +1,14 @@
 """Dataset loading, field auto-detection, normalisation and validation.
 
-Everything in this module is real file I/O. Only the Hugging Face *datasets*
-path needs an optional dependency; JSON/JSONL/CSV/TXT/folders work on bare
-Python, which means the app can validate a dataset on any machine.
+Everything here is real file I/O. Only the Hugging Face *datasets* path needs an
+optional dependency; JSON/JSONL/CSV/TXT/folders work on bare Python, which means
+a dataset can be validated on any machine.
 
-Normalisation is done by :func:`analyze`, which returns two parallel things:
+:func:`analyze` returns two parallel things:
 
 * ``samples``  — only the usable samples, ready for training
-* ``records``  — one status entry per *raw* record, so statistics never lose
-  their alignment when a row in the middle is dropped
-
-That distinction matters: an earlier index-based approach miscounted rows as
-soon as one record was skipped.
+* ``statuses`` — one entry per *raw* record, so statistics never lose alignment
+  when a row in the middle is dropped
 """
 
 from __future__ import annotations
@@ -90,7 +87,7 @@ def detect_format(path: str) -> str:
     suffix = target.suffix.lower()
     if suffix == ".ndjson":
         return "jsonl"
-    if suffix in (".txt", ".text"):
+    if suffix in TEXT_EXTENSIONS:
         return "txt"
     if suffix == ".tsv":
         return "csv"
@@ -227,7 +224,7 @@ def _load_folder(
             code="empty_folder",
         )
 
-    meta["files"] = [str(p.relative_to(target)) for p in candidates]
+    meta["files"] = [str(p.relative_to(target)).replace("\\", "/") for p in candidates]
     records: list[Any] = []
     file_errors: list[dict[str, Any]] = []
     shapes: dict[tuple[str, ...], list[str]] = {}
@@ -431,11 +428,7 @@ def resolve_source(
     max_records: int = 20_000,
     progress: ProgressFn | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
-    """Load records from either a local path or a Hugging Face dataset id.
-
-    Keeping both sources behind one function means validation, previewing and
-    training all describe the dataset the same way.
-    """
+    """Load records from either a local path or a Hugging Face dataset id."""
     if hf_id:
         records = load_hf_dataset(hf_id, split=split, max_records=max_records)
         return records, {
@@ -605,12 +598,7 @@ def messages_to_text(messages: list[dict[str, str]]) -> str:
     return "\n".join(f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages)
 
 
-def render_pair(
-    instruction: str,
-    extra_input: str,
-    output: str,
-    template_text: str,
-) -> str:
+def render_pair(instruction: str, extra_input: str, output: str, template_text: str) -> str:
     if "{prompt}" in template_text:
         return template_text.format(prompt=instruction, response=output)
     if extra_input:
@@ -623,11 +611,7 @@ def analyze(
     mapping: dict[str, Any],
     template: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Convert raw records into samples plus a per-record status list.
-
-    Returns ``(samples, statuses)`` where ``statuses`` has exactly one entry per
-    raw record, so statistics stay aligned even when records are dropped.
-    """
+    """Convert raw records into samples plus a per-record status list."""
     kind = mapping.get("kind", "text")
     template_name = template or mapping.get("template") or "alpaca"
     template_text = TEMPLATES.get(template_name) or mapping.get("template_text") or TEMPLATES["plain"]

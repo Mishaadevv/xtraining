@@ -9,7 +9,7 @@ import process from "node:process";
 
 const server = await createServer({ configFile: "vite.config.ts" });
 await server.listen();
-const info = server.resolvedUrls?.local?.[0] ?? `http://localhost:5273/`;
+const info = server.resolvedUrls?.local?.[0] ?? "http://localhost:5273/";
 server.printUrls();
 
 console.log(`\n[dev] ZeqouXTraining renderer at ${info}\n`);

@@ -9,7 +9,9 @@ Anything that would need the ML runtime is skipped, not faked.
 
 from __future__ import annotations
 
+import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -46,22 +48,8 @@ def section(title: str) -> None:
 # Protocol
 # --------------------------------------------------------------------------- #
 
-class _Capture:
-    def __init__(self) -> None:
-        self.lines: list[dict] = []
-
-    def __call__(self, event: str, detail: dict | None = None) -> None:
-        self.lines.append({"event": event, "detail": detail or {}})
-
-
 def test_events() -> None:
     section("Event protocol")
-    capture = _Capture()
-    events.emit_to = capture  # type: ignore[attr-defined]
-    original_emit = events.emit
-
-    # Capture the real stdout the protocol writes to.
-    import io
 
     buffer = io.StringIO()
     real_stream = events._EVENT_STREAM
@@ -80,8 +68,6 @@ def test_events() -> None:
     check("log carries a level", lines[1]["detail"]["level"] == "warn")
     check("fail carries hint and code",
           lines[2]["detail"]["hint"] == "do this" and lines[2]["detail"]["code"] == "x")
-    events.emit = original_emit
-    del events.emit_to  # type: ignore[attr-defined]
 
 
 # --------------------------------------------------------------------------- #
@@ -468,18 +454,18 @@ def test_vram_estimator() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Checkpoints
+# Backends
 # --------------------------------------------------------------------------- #
 
 def test_backend_helpers() -> None:
-    """Pure helpers in the PEFT backend — no torch needed to verify them."""
+    """Pure helpers — no torch needed to verify them."""
     section("Backend compatibility helpers")
-    from zeqouxtraining.backends.hf_peft import _load_kwargs, _supported_kwargs
+    from zeqouxtraining.backends.common import load_kwargs, supported_kwargs
 
     def signature_probe(a, b, c=1) -> None:  # noqa: ARG001
         pass
 
-    filtered = _supported_kwargs(signature_probe, {"a": 1, "b": 2, "nope": 3})
+    filtered = supported_kwargs(signature_probe, {"a": 1, "b": 2, "nope": 3})
     check("unknown TrainingArguments kwargs are dropped",
           filtered == {"a": 1, "b": 2}, str(filtered))
 
@@ -489,15 +475,12 @@ def test_backend_helpers() -> None:
     def loader_new(self, dtype=None) -> None:  # noqa: ARG001
         pass
 
-    kept = _load_kwargs(loader_old, {"torch_dtype": "bf16"})
+    kept = load_kwargs(loader_old, {"torch_dtype": "bf16"})
     check("older transformers keeps torch_dtype",
           kept == {"torch_dtype": "bf16"}, str(kept))
 
-    renamed = _load_kwargs(loader_new, {"torch_dtype": "bf16"})
+    renamed = load_kwargs(loader_new, {"torch_dtype": "bf16"})
     check("newer transformers gets dtype instead", renamed == {"dtype": "bf16"}, str(renamed))
-
-    backend = config_mod  # keep flake quiet about unused import order
-    check("config module is importable", hasattr(backend, "METHODS"))
 
     from zeqouxtraining.backends.registry import backend_capabilities
 
@@ -506,7 +489,6 @@ def test_backend_helpers() -> None:
           set(caps["hf-peft"]["methods"]) == {"lora", "qlora", "sft", "full"}, str(caps))
     check("hf-peft reports its missing packages instead of claiming readiness",
           isinstance(caps["hf-peft"]["missing"], list))
-
 
 
 def test_checkpoints() -> None:
@@ -654,8 +636,6 @@ def test_exporter() -> None:
         except exporter.ExportError as exc:
             overwrite_ok = exc.code == "not_empty"
         check("exporting into a used folder is refused", overwrite_ok)
-        check("the refused export wrote nothing extra",
-              sorted(p.name for p in target.iterdir())[0] != "tokenizer_config.json" or True)
 
         try:
             exporter.export(no_weights, root / "nowhere")
@@ -692,11 +672,12 @@ def test_exporter() -> None:
 
 def test_cli_protocol() -> None:
     section("CLI protocol")
+
     def run(*args: str) -> list[dict]:
         proc = subprocess.run(
             [sys.executable, "-m", "zeqouxtraining.cli", *args],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=str(ROOT), env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+            cwd=str(ROOT), env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         return [
             json.loads(line)
@@ -750,9 +731,8 @@ def test_cli_protocol() -> None:
 
 def test_scratch_backend() -> None:
     """From-scratch training: architecture resolution, validation and routing."""
-    print("\nscratch backend (training from zero)")
-    from zeqouxtraining import config as config_mod
-    from zeqouxtraining.backends.scratch import ScratchBackend, SIZES, resolve_architecture
+    section("Scratch backend (training from zero)")
+    from zeqouxtraining.backends.scratch import CharTokenizer, SIZES, resolve_architecture
 
     arch = resolve_architecture({})
     check("the default architecture is the tiny preset",
@@ -763,7 +743,8 @@ def test_scratch_backend() -> None:
           custom["layers"] == 6 and custom["hidden"] == 300 and custom["hidden"] % custom["heads"] == 0,
           str(custom))
 
-    check("scratch is a registered method of its backend", ScratchBackend().methods == ("scratch",))
+    backend = config_mod  # keep flake quiet about import order
+    check("config module is importable", hasattr(backend, "METHODS"))
 
     # Validation: scratch needs no base model, but other methods still do.
     base_cfg = config_mod.normalize({"method": "scratch", "dataset": {"path": "x.jsonl"}})
@@ -779,8 +760,7 @@ def test_scratch_backend() -> None:
 
     char_tok = None
     try:
-        from zeqouxtraining.backends.scratch import _CharTokenizer
-        char_tok = _CharTokenizer(["hello world", "second line"], 5000)
+        char_tok = CharTokenizer(["hello world", "second line"], 5000)
     except Exception:
         char_tok = None
     check("the character tokenizer learns a vocabulary without any download",
@@ -822,11 +802,11 @@ def main() -> int:
     test_auto_configure_cpu()
     test_vram_estimator()
     test_backend_helpers()
-    test_scratch_backend()
     test_checkpoints()
     test_error_humanizing()
     test_exporter()
     test_cli_protocol()
+    test_scratch_backend()
 
     print("\n" + "=" * 62)
     print(f"passed: {len(PASSED)}   failed: {len(FAILED)}")

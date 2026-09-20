@@ -42,11 +42,113 @@ function fileSize(target) {
 
 /* --------------------------------------------------------------- datasets */
 
-function listDatasets() {
-  return datasetsStore().get();
+/**
+ * Datasets that ship with the application.
+ *
+ * The `datasets/` folder next to the app (repo folder in development,
+ * `resources/datasets` when packaged) is scanned on demand, so a built-in
+ * dataset is always in sync with what was actually installed. Names, record
+ * counts and the default flag come from `datasets/manifest.json`; anything not
+ * listed there still appears, with a name derived from its file name.
+ *
+ * Validation reports for built-ins are kept in memory only: the files
+ * themselves are app assets and may be replaced by an update, so a stale
+ * stored report would lie about the current file.
+ */
+const BUILTIN_PREFIX = "builtin:";
+const builtinReports = new Map(); // id -> { report, validatedAt }
+
+function builtinManifest() {
+  try {
+    const file = path.join(dirs.datasets(), "manifest.json");
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    const map = new Map();
+    for (const item of parsed.datasets || []) {
+      if (item && item.file) map.set(String(item.file).replace(/\\/g, "/"), item);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
 }
 
-async function importDataset(targetPath) {
+/** Fallback label when the manifest has nothing to say: "code_python_5" -> "Code Python 5". */
+function prettyBuiltinName(relative) {
+  const base = path.basename(relative, path.extname(relative));
+  return base
+    .split(/[_\-.]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function listBuiltinDatasets() {
+  const root = dirs.datasets();
+  const manifest = builtinManifest();
+  const entries = [];
+
+  const walk = (dir) => {
+    let items = [];
+    try {
+      items = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const item of items) {
+      const full = path.join(dir, item.name);
+      if (item.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (item.name === "manifest.json" || !/\.(json|jsonl)$/i.test(item.name)) continue;
+
+      const relative = path.relative(root, full).replace(/\\/g, "/");
+      const meta = manifest.get(relative) || {};
+      const id = BUILTIN_PREFIX + relative;
+      const cached = builtinReports.get(id);
+
+      entries.push({
+        id,
+        name: meta.name || prettyBuiltinName(relative),
+        path: full.replace(/\\/g, "/"),
+        format: path.extname(item.name).replace(".", "").toLowerCase(),
+        isDirectory: false,
+        sizeBytes: fileSize(full),
+        addedAt: 0,
+        records: meta.records ?? cached?.report?.dataset?.records ?? 0,
+        usable: cached?.report?.stats?.usable ?? 0,
+        status: cached?.report?.status ?? "unvalidated",
+        mapping: cached?.report?.mapping ?? null,
+        issues: cached?.report?.issues ?? [],
+        report: cached?.report ?? null,
+        builtin: true,
+        default: Boolean(meta.default),
+        lang: meta.lang || null,
+        thinking: Boolean(meta.thinking),
+        validatedAt: cached?.validatedAt ?? null,
+      });
+    }
+  };
+
+  walk(root);
+  // The default stands first, everything else alphabetically.
+  entries.sort((a, b) => Number(b.default) - Number(a.default) || a.name.localeCompare(b.name));
+  return entries;
+}
+
+/** A stored entry, a built-in entry or null — ids and paths both resolve. */
+function findDataset(idOrPath) {
+  const stored = datasetsStore().get().find((item) => item.id === idOrPath || item.path === idOrPath);
+  if (stored) return stored;
+  return listBuiltinDatasets().find((item) => item.id === idOrPath || item.path === idOrPath) || null;
+}
+
+/** User imports first, built-ins after — the library always has something usable. */
+function listDatasets() {
+  return [...datasetsStore().get(), ...listBuiltinDatasets()];
+}
+
+function importDataset(targetPath) {
   const exists = fs.existsSync(targetPath);
   if (!exists) {
     return { ok: false, error: { code: "not_found", message: `'${targetPath}' does not exist.` } };
@@ -165,9 +267,7 @@ function datasetSourceArgs(entryOrPath, options = {}) {
 }
 
 async function validateDataset(idOrPath, options = {}) {
-  const store = datasetsStore();
-  const list = store.get();
-  const entry = list.find((item) => item.id === idOrPath || item.path === idOrPath) || null;
+  const entry = findDataset(idOrPath);
   const target = entry ? entry.path : idOrPath;
   if (!target) {
     return { ok: false, error: { code: "not_found", message: "Dataset not found." } };
@@ -191,35 +291,68 @@ async function validateDataset(idOrPath, options = {}) {
     };
   }
 
+  if (entry && entry.builtin) {
+    // Built-in files are app assets that an update may replace, so their
+    // reports live in memory for this session instead of on disk.
+    builtinReports.set(entry.id, { report, validatedAt: Date.now() });
+    return {
+      ok: true,
+      report,
+      dataset: {
+        ...entry,
+        records: report.dataset?.records ?? entry.records,
+        usable: report.stats ? report.stats.usable : 0,
+        status: report.status,
+        mapping: report.mapping,
+        issues: report.issues || [],
+        report,
+        validatedAt: Date.now(),
+      },
+    };
+  }
+
   if (entry) {
     // Keep what was already known when the report has nothing to say: a failed
     // validation must not wipe the stored format or size.
+    const store = datasetsStore();
+    const list = store.get();
+    const stored = list.find((item) => item.id === entry.id) || entry;
     const reported = report.dataset || {};
-    Object.assign(entry, {
+    Object.assign(stored, {
       records: reported.records ?? 0,
       usable: report.stats ? report.stats.usable : 0,
       status: report.status,
       mapping: report.mapping,
       issues: report.issues || [],
       report,
-      format: reported.format || entry.format,
-      sizeBytes: typeof reported.bytes === "number" ? reported.bytes : entry.sizeBytes,
+      format: reported.format || stored.format,
+      sizeBytes: typeof reported.bytes === "number" ? reported.bytes : stored.sizeBytes,
       validatedAt: Date.now(),
     });
     store.replace(list);
+    return { ok: true, report, dataset: stored };
   }
 
-  return { ok: true, report, dataset: entry || null };
+  return { ok: true, report, dataset: null };
 }
 
 function removeDataset(id) {
+  if (String(id).startsWith(BUILTIN_PREFIX)) {
+    return {
+      ok: false,
+      error: {
+        code: "builtin",
+        message: "Built-in datasets ship with the app and cannot be removed.",
+      },
+    };
+  }
   const store = datasetsStore();
   store.replace(store.get().filter((item) => item.id !== id));
   return { ok: true };
 }
 
 async function previewDataset(idOrPath, limit = 5) {
-  const entry = datasetsStore().get().find((item) => item.id === idOrPath) || null;
+  const entry = findDataset(idOrPath);
   const target = entry ? entry.path : idOrPath;
   const response = await python.run([
     "preview-dataset", ...datasetSourceArgs(entry || target, {}),
@@ -415,6 +548,8 @@ function removeProject(id) {
 
 module.exports = {
   listDatasets,
+  listBuiltinDatasets,
+  findDataset,
   importDataset,
   addHfDataset,
   validateDataset,

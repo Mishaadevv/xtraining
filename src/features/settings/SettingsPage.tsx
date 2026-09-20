@@ -33,7 +33,12 @@ import {
   Select,
   Switch,
 } from "@/components/ui/primitives";
-import type { BackendCapability, DependencyInfo, InstallPlan } from "@/lib/types";
+import type {
+  BackendCapability,
+  DependencyInfo,
+  InstallPlan,
+  InterpreterCandidate,
+} from "@/lib/types";
 import { cn, formatBytes } from "@/lib/utils";
 import { useStore } from "@/state/store";
 import {
@@ -43,20 +48,12 @@ import {
   navigate,
   openPath,
   refreshEnv,
+  resetSettings,
   saveHfToken,
   selectInterpreter,
   updateSettings,
 } from "@/state/appStore";
 import { bridge, isDesktop } from "@/lib/bridge";
-
-interface InterpreterInfo {
-  command: string;
-  args?: string[];
-  label: string;
-  available: boolean;
-  info?: { executable: string; version: string; implementation: string };
-  reason?: string;
-}
 
 function SectionHeading({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -75,25 +72,30 @@ export function SettingsPage() {
   const backends = (env.backends ?? []) as BackendCapability[];
   const plan = env.installPlan as InstallPlan | null;
 
-  const [interpreters, setInterpreters] = useState<InterpreterInfo[]>([]);
+  const [interpreters, setInterpreters] = useState<InterpreterCandidate[]>([]);
   const [discovering, setDiscovering] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
-  const [tokenStatus, setTokenStatus] = useState<{ present: boolean; encrypted: boolean; insecure: boolean } | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<{
+    present: boolean;
+    encrypted: boolean;
+    insecure?: boolean;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
+  const refreshInterpreters = async () => {
+    setDiscovering(true);
+    const list = await discoverInterpreters(true);
+    if (list) setInterpreters(list as InterpreterCandidate[]);
+    const status = await bridge.settings.tokenStatus();
+    if (status.ok && status.storage) setTokenStatus(status.storage);
+    setDiscovering(false);
+  };
+
   useEffect(() => {
-    void (async () => {
-      if (!isDesktop) return;
-      setDiscovering(true);
-      const result = await discoverInterpreters(true);
-      if (result && Array.isArray(result.interpreters)) {
-        setInterpreters(result.interpreters as InterpreterInfo[]);
-      }
-      const status = await bridge.settings.tokenStatus();
-      if (status.ok) setTokenStatus(status.storage as typeof tokenStatus);
-      setDiscovering(false);
-    })();
+    if (!isDesktop) return;
+    void refreshInterpreters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const copyPlan = async () => {
@@ -140,16 +142,7 @@ export function SettingsPage() {
                   size="sm"
                   variant="ghost"
                   loading={discovering}
-                  onClick={() => {
-                    void (async () => {
-                      setDiscovering(true);
-                      const result = await discoverInterpreters(true);
-                      if (result && Array.isArray(result.interpreters)) {
-                        setInterpreters(result.interpreters as InterpreterInfo[]);
-                      }
-                      setDiscovering(false);
-                    })();
-                  }}
+                  onClick={() => void refreshInterpreters()}
                 >
                   Find interpreters
                 </Button>
@@ -189,7 +182,7 @@ export function SettingsPage() {
               const isActive = env.python?.executable === interpreter.info?.executable;
               return (
                 <button
-                  key={`${interpreter.command}_${(interpreter.args || []).join("_")}`}
+                  key={`${interpreter.label}_${interpreter.info?.executable ?? interpreter.command}`}
                   type="button"
                   disabled={!interpreter.available}
                   onClick={() => interpreter.info?.executable && void selectInterpreter(interpreter.info.executable)}
@@ -409,7 +402,7 @@ export function SettingsPage() {
                     void saveHfToken(tokenInput.trim()).then(() => {
                       setTokenInput("");
                       void bridge.settings.tokenStatus().then((status) => {
-                        if (status.ok) setTokenStatus(status.storage as typeof tokenStatus);
+                        if (status.ok && status.storage) setTokenStatus(status.storage);
                       });
                     })
                   }
@@ -421,7 +414,7 @@ export function SettingsPage() {
                     variant="ghost"
                     onClick={() =>
                       void saveHfToken(null).then(() =>
-                        setTokenStatus({ present: false, encrypted: false, insecure: false }),
+                        setTokenStatus({ present: false, encrypted: false }),
                       )
                     }
                   >
@@ -592,7 +585,7 @@ export function SettingsPage() {
         description="Settings return to their defaults. Interpreters, tokens, runs, datasets and trained models are not affected."
         confirmLabel="Reset settings"
         onConfirm={() => {
-          void bridge.settings.reset().then(() => refreshEnv(true));
+          void resetSettings();
           setConfirmReset(false);
         }}
         onCancel={() => setConfirmReset(false)}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Track an element's width so charts render at real pixel size (no distortion). */
+/** Track an element's width so charts render at true pixel size. */
 export function useElementWidth<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
   const [width, setWidth] = useState(0);
@@ -25,7 +25,6 @@ export function useElementWidth<T extends HTMLElement>() {
 export interface ChartPoint {
   x: number;
   y: number;
-  meta?: Record<string, string | number | null>;
 }
 
 interface LineChartProps {
@@ -38,14 +37,15 @@ interface LineChartProps {
   formatX?: (value: number) => string;
   labelY?: string;
   labelX?: string;
-  emptyMessage?: string;
-  yPadRatio?: number;
-  tooltipRows?: (index: number) => { label: string; value: string }[];
+  emptyLabel?: string;
+  yPadding?: number;
+  tooltip?: (index: number) => { label: string; value: string }[];
 }
 
 /**
- * A real line chart: computed scales, gridlines, axis labels, and a hover
- * crosshair that reports the nearest sample.
+ * A real line chart: computed scales, gridlines, axis labels and a hover
+ * crosshair that reports the nearest sample. No chart library — the data is
+ * small, and the dependency would outweigh the feature.
  */
 export function LineChart({
   points,
@@ -57,31 +57,31 @@ export function LineChart({
   formatX = (value) => String(Math.round(value)),
   labelY,
   labelX,
-  emptyMessage = "No data yet",
-  yPadRatio = 0.08,
-  tooltipRows,
+  emptyLabel = "No data yet",
+  yPadding = 0.08,
+  tooltip,
 }: LineChartProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
-  const pad = { top: 12, right: 14, bottom: 22, left: 46 };
+  const pad = { top: 12, right: 14, bottom: 22, left: 48 };
   const innerWidth = Math.max(10, width - pad.left - pad.right);
   const innerHeight = Math.max(10, height - pad.top - pad.bottom);
 
   const scale = useMemo(() => {
     if (!points.length) return null;
     const xs = points.map((point) => point.x);
-    let ys = points.map((point) => point.y);
-    if (secondary && secondary.length) ys = ys.concat(secondary.map((point) => point.y));
+    const ys = points.map((point) => point.y);
+    if (secondary?.length) ys.push(...secondary.map((point) => point.y));
 
     const xMin = Math.min(...xs);
     const xMax = Math.max(...xs);
     let yMin = Math.min(...ys);
     let yMax = Math.max(...ys);
     const span = yMax - yMin;
-    const padY = span > 0 ? span * yPadRatio : Math.max(0.05, Math.abs(yMax) * 0.1 || 0.05);
-    yMin -= padY;
-    yMax += padY;
+    const extra = span > 0 ? span * yPadding : Math.max(0.05, Math.abs(yMax) * 0.1 || 0.05);
+    yMin -= extra;
+    yMax += extra;
 
     const spanX = xMax - xMin || 1;
     const spanY = yMax - yMin || 1;
@@ -95,7 +95,7 @@ export function LineChart({
       toY: (value: number) => pad.top + innerHeight - ((value - yMin) / spanY) * innerHeight,
       ticks: [yMin, yMin + spanY / 3, yMin + (spanY * 2) / 3, yMax],
     };
-  }, [points, secondary, innerWidth, innerHeight, pad.left, pad.top, yPadRatio]);
+  }, [points, secondary, innerWidth, innerHeight, yPadding]);
 
   if (!points.length || !scale) {
     return (
@@ -104,27 +104,23 @@ export function LineChart({
         className="flex items-center justify-center rounded-[10px] border border-dashed border-[var(--border)] text-[12px] text-[var(--text-3)]"
         style={{ height }}
       >
-        {emptyMessage}
+        {emptyLabel}
       </div>
     );
   }
 
-  const linePath = points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${scale.toX(point.x).toFixed(2)},${scale.toY(point.y).toFixed(2)}`)
-    .join(" ");
+  const path = (series: ChartPoint[]) =>
+    series
+      .map((point, index) => `${index === 0 ? "M" : "L"}${scale.toX(point.x).toFixed(2)},${scale.toY(point.y).toFixed(2)}`)
+      .join(" ");
 
+  const linePath = path(points);
   const areaPath = `${linePath} L${scale.toX(points[points.length - 1].x).toFixed(2)},${(pad.top + innerHeight).toFixed(2)} L${scale.toX(points[0].x).toFixed(2)},${(pad.top + innerHeight).toFixed(2)} Z`;
+  const secondaryPath = secondary?.length ? path(secondary) : null;
 
-  const secondaryPath = secondary && secondary.length
-    ? secondary
-        .map((point, index) => `${index === 0 ? "M" : "L"}${scale.toX(point.x).toFixed(2)},${scale.toY(point.y).toFixed(2)}`)
-        .join(" ")
-    : null;
-
-  const activeIndex =
-    hover == null ? null : Math.max(0, Math.min(points.length - 1, hover));
+  const activeIndex = hover == null ? null : Math.max(0, Math.min(points.length - 1, hover));
   const active = activeIndex == null ? null : points[activeIndex];
-  const gradientId = `zqgrad_${Math.abs(points[0].x)}_${points.length}`;
+  const gradientId = `zqGrad_${Math.abs(Math.round(points[0].x))}_${points.length}`;
 
   return (
     <div ref={ref} className="relative w-full" style={{ height }}>
@@ -134,8 +130,7 @@ export function LineChart({
         onMouseLeave={() => setHover(null)}
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const ratio = (x - pad.left) / Math.max(1, innerWidth);
+          const ratio = (event.clientX - rect.left - pad.left) / Math.max(1, innerWidth);
           setHover(Math.round(Math.max(0, Math.min(1, ratio)) * (points.length - 1)));
         }}
       >
@@ -174,9 +169,23 @@ export function LineChart({
 
         <path d={areaPath} fill={`url(#${gradientId})`} />
         {secondaryPath ? (
-          <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1.4" strokeDasharray="4 3" opacity="0.85" />
+          <path
+            d={secondaryPath}
+            fill="none"
+            stroke={secondaryColor}
+            strokeWidth="1.4"
+            strokeDasharray="4 3"
+            opacity="0.85"
+          />
         ) : null}
-        <path d={linePath} fill="none" stroke={color} strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" />
+        <path
+          d={linePath}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.7"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
 
         {active ? (
           <g>
@@ -222,13 +231,16 @@ export function LineChart({
         <div
           className="pointer-events-none absolute top-1 z-10 min-w-[132px] rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-2.5 py-1.5 shadow-[var(--shadow)]"
           style={{
-            left: Math.max(0, Math.min(scale.toX(active.x) + 12, Math.max(0, width - 150))),
+            left: Math.max(0, Math.min(scale.toX(active.x) + 12, Math.max(0, width - 152))),
           }}
         >
-          {(tooltipRows ? tooltipRows(activeIndex ?? 0) : [
-            { label: labelX ?? "x", value: formatX(active.x) },
-            { label: labelY ?? "value", value: formatY(active.y) },
-          ]).map((row) => (
+          {(tooltip
+            ? tooltip(activeIndex ?? 0)
+            : [
+                { label: labelX ?? "x", value: formatX(active.x) },
+                { label: labelY ?? "value", value: formatY(active.y) },
+              ]
+          ).map((row) => (
             <div key={row.label} className="flex items-baseline justify-between gap-3">
               <span className="text-[10.5px] text-[var(--text-3)]">{row.label}</span>
               <span className="zq-mono text-[11px]">{row.value}</span>
@@ -253,7 +265,7 @@ export function Sparkline({
 }) {
   const clean = values.filter((value) => Number.isFinite(value));
   if (clean.length < 2) {
-    return <div className={cn("h-8 rounded bg-[var(--panel-2)]", className)} />;
+    return <div className={cn("h-8 rounded-[8px] bg-[var(--panel-2)]", className)} />;
   }
   const min = Math.min(...clean);
   const max = Math.max(...clean);
@@ -267,7 +279,12 @@ export function Sparkline({
     .join(" ");
 
   return (
-    <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className={cn("w-full", className)} style={{ height }}>
+    <svg
+      viewBox={`0 0 100 ${height}`}
+      preserveAspectRatio="none"
+      className={cn("w-full", className)}
+      style={{ height }}
+    >
       <path d={path} fill="none" stroke={color} strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
     </svg>
   );
@@ -291,7 +308,7 @@ export function MeterBar({
   height?: number;
 }) {
   const ratio = value == null || !Number.isFinite(value) ? 0 : Math.max(0, Math.min(1, value / (max || 1)));
-  const autoTone: typeof tone =
+  const resolved: "accent" | "good" | "warn" | "bad" =
     tone ?? (ratio > 0.92 ? "bad" : ratio > 0.78 ? "warn" : "accent");
   const colors: Record<string, string> = {
     accent: "var(--acc)",
@@ -311,7 +328,7 @@ export function MeterBar({
       <div className="w-full overflow-hidden rounded-full bg-[var(--panel-2)]" style={{ height }}>
         <div
           className="h-full rounded-full transition-[width] duration-500 ease-out"
-          style={{ width: `${ratio * 100}%`, background: colors[autoTone ?? "accent"] }}
+          style={{ width: `${ratio * 100}%`, background: colors[resolved] }}
         />
       </div>
     </div>

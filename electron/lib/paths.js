@@ -4,7 +4,6 @@
  * Everything user-generated lives under Electron's userData directory:
  *   settings.json, secrets.json, datasets.json, models.json, runs.json
  *   runs/<runId>/          checkpoints, trainer state, logs, metadata
- *   datasets/              copies of imported dataset files
  *   models/                trained models produced by this app
  */
 const { app } = require("electron");
@@ -18,11 +17,11 @@ function root() {
 const dirs = {
   root,
   runs: () => path.join(root(), "runs"),
-  datasets: () => path.join(root(), "datasets"),
   models: () => path.join(root(), "models"),
   cache: () => path.join(root(), "cache"),
   hfCache: () => path.join(root(), "cache", "huggingface"),
   logs: () => path.join(root(), "logs"),
+  datasets: datasetsDir,
 };
 
 const files = {
@@ -54,8 +53,28 @@ function pythonPackageDir() {
   return candidates[0];
 }
 
+/**
+ * The bundled dataset folder. Same resolution story as the Python package:
+ * the repo folder in development, `resources/datasets` in a packaged build.
+ */
+function datasetsDir() {
+  const candidates = [
+    path.join(__dirname, "..", "..", "datasets"),
+    path.join(process.resourcesPath || "", "datasets"),
+    path.join(process.resourcesPath || "", "app.asar.unpacked", "datasets"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      /* keep looking */
+    }
+  }
+  return candidates[0];
+}
+
 function ensureDirs() {
-  for (const dir of [dirs.root(), dirs.runs(), dirs.datasets(), dirs.models(), dirs.cache(), dirs.logs()]) {
+  for (const dir of [dirs.root(), dirs.runs(), dirs.models(), dirs.cache(), dirs.logs()]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -99,4 +118,4 @@ function uniqueDir(parent, base) {
   return candidate;
 }
 
-module.exports = { dirs, files, pythonPackageDir, ensureDirs, slugify, uniqueDir, isInside, root };
+module.exports = { dirs, files, pythonPackageDir, datasetsDir, ensureDirs, slugify, uniqueDir, isInside, root };

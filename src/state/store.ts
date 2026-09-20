@@ -7,7 +7,7 @@ export type Listener = () => void;
  *
  * The app has exactly one store, so a state library would be overhead. Updates
  * are pushed from the main process (training progress, GPU samples), and
- * useSyncExternalStore keeps React in step without any extra machinery.
+ * useSyncExternalStore keeps React in step without extra machinery.
  */
 export class Store<T extends object> {
   private state: T;
@@ -33,7 +33,7 @@ export class Store<T extends object> {
     this.emit();
   };
 
-  /** Replace state without change detection — used on bootstrap. */
+  /** Replace state wholesale — used on bootstrap. */
   reset = (next: T): void => {
     this.state = next;
     this.emit();
@@ -62,9 +62,9 @@ export function useStore<T extends object>(store: Store<T>): T {
 }
 
 /**
- * Subscribe to a derived slice. The selector result is cached and compared so a
- * fast-moving field (GPU samples arriving every second) does not re-render an
- * unrelated page.
+ * Subscribe to a derived slice. The selector result is cached and compared, so
+ * a fast-moving field (GPU samples arriving every few seconds) does not
+ * re-render an unrelated page.
  */
 export function useSelect<T extends object, S>(
   store: Store<T>,

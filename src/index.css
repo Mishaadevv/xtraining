@@ -1,10 +1,9 @@
-/* ─────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────────
    ZeqouXTraining — visual system
-   Shared tokens with Zeqou Harness and ZeqouXChat:
-   space over borders, type over chrome, one accent.
-   Fonts are deliberately local (no webfont fetch) so the
-   desktop app renders identically offline and the CSP stays tight.
-   ───────────────────────────────────────────── */
+   One accent, quiet surfaces, mono numerals. Fonts are local on
+   purpose: the desktop app must render identically offline, and a
+   tight CSP is part of the security story.
+   ─────────────────────────────────────────────────────────────── */
 
 @tailwind base;
 @tailwind components;
@@ -17,7 +16,7 @@
     "Liberation Mono", monospace;
 
   --r-sm: 8px;
-  --r-md: 10px;
+  --r-md: 11px;
   --r-lg: 14px;
 
   --t-fast: 130ms;
@@ -33,23 +32,23 @@ html[data-theme="dark"] {
   --bg-soft: #0e0e11;
   --panel: #121215;
   --panel-2: #17171c;
-  --border: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.09);
   --border-soft: rgba(255, 255, 255, 0.055);
+  --border-strong: rgba(255, 255, 255, 0.16);
   --text: #ececf0;
   --text-2: #a2a2ad;
-  --text-3: #62626d;
+  --text-3: #66666f;
   --acc: #8b7cff;
-  --acc-soft: rgba(139, 124, 255, 0.12);
+  --acc-soft: rgba(139, 124, 255, 0.13);
   --blue: #7aa5f8;
   --green: #5fbf8f;
   --amber: #d9a45b;
   --red: #e06c75;
-  --hover: rgba(255, 255, 255, 0.04);
-  --active: rgba(255, 255, 255, 0.07);
+  --hover: rgba(255, 255, 255, 0.045);
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
   --code-bg: #101014;
   --input: #101014;
-  --skeleton: linear-gradient(90deg, #141418 25%, #1c1c22 50%, #141418 75%);
+  --skeleton: linear-gradient(90deg, #141418 25%, #1d1d23 50%, #141418 75%);
 }
 
 html[data-theme="light"] {
@@ -58,23 +57,23 @@ html[data-theme="light"] {
   --bg-soft: #f7f7f8;
   --panel: #ffffff;
   --panel-2: #f4f4f6;
-  --border: #e7e7ec;
-  --border-soft: #efeff3;
+  --border: #e5e5ea;
+  --border-soft: #eeeeF2;
+  --border-strong: #d4d4dc;
   --text: #17171b;
-  --text-2: #5f5f6b;
-  --text-3: #a0a0ab;
+  --text-2: #5d5d68;
+  --text-3: #97979f;
   --acc: #6558f5;
   --acc-soft: rgba(101, 88, 245, 0.09);
   --blue: #2f6fed;
   --green: #1d9e6b;
   --amber: #b97a1a;
   --red: #d33f49;
-  --hover: rgba(23, 23, 27, 0.04);
-  --active: rgba(23, 23, 27, 0.07);
+  --hover: rgba(23, 23, 27, 0.045);
   --shadow: 0 16px 44px rgba(23, 23, 27, 0.14);
   --code-bg: #f7f7f8;
   --input: #f7f7f8;
-  --skeleton: linear-gradient(90deg, #f0f0f3 25%, #f8f8fa 50%, #f0f0f3 75%);
+  --skeleton: linear-gradient(90deg, #f0f0f3 25%, #f9f9fb 50%, #f0f0f3 75%);
 }
 
 * {
@@ -133,7 +132,7 @@ a {
   background-clip: content-box;
 }
 
-/* ── calm motion ─────────────────────────────────────────────── */
+/* ── motion ──────────────────────────────────────────────────── */
 
 @keyframes zqRise {
   from {
@@ -152,16 +151,6 @@ a {
   }
   to {
     opacity: 1;
-  }
-}
-
-@keyframes zqPulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
   }
 }
 
@@ -201,6 +190,7 @@ a {
 .zq-rise {
   animation: zqRise var(--t-slow) var(--ease) both;
 }
+
 .zq-fade {
   animation: zqFade var(--t-med) var(--ease) both;
 }
@@ -228,13 +218,13 @@ a {
   background: var(--input);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  padding: 8px 10px;
+  padding: 7px 10px;
   font-size: 13px;
   outline: none;
   transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
 .zq-input:hover {
-  border-color: var(--border-strong, rgba(255, 255, 255, 0.16));
+  border-color: var(--border-strong);
 }
 .zq-input:focus {
   border-color: var(--acc);
@@ -252,19 +242,20 @@ select.zq-input {
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
     linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
-  background-position: calc(100% - 16px) 51%, calc(100% - 11px) 51%;
+  background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   padding-right: 30px;
 }
 
+textarea.zq-input {
+  resize: vertical;
+  line-height: 1.55;
+}
+
 .zq-scroll {
   overflow: auto;
   scrollbar-gutter: stable;
-}
-
-.zq-hairline {
-  border-bottom: 1px solid var(--border-soft);
 }
 
 .zq-mono {
@@ -279,7 +270,7 @@ select.zq-input {
   border-radius: var(--r-sm);
 }
 
-/* Living background: two slow aurora blobs, matching the ecosystem. */
+/* Living background: two slow aurora blobs, shared with the ecosystem. */
 .zq-aurora {
   position: fixed;
   inset: 0;

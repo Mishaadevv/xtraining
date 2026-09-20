@@ -328,7 +328,7 @@ export function TrainingPage() {
                       <PanelHeader title="Dataset used" description="Recorded at the moment the run started." />
                       <div className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
                         <Stat label="Records" value={selectedRun.datasetReport.records ?? "—"} />
-                        <Stat label="Samples" value={selectedRun.datasetReport.samples ?? "—"} />
+                        <Stat label="Usable" value={selectedRun.datasetReport.usable ?? "—"} />
                         <Stat label="Mapping" value={selectedRun.datasetReport.mapping?.kind ?? "—"} mono={false} />
                         <Stat
                           label="Target modules"
@@ -350,7 +350,7 @@ export function TrainingPage() {
                           baseModel: selectedRun.baseModel,
                           method: selectedRun.method,
                           projectId: selectedRun.projectId,
-                          projectName: `${selectedRun.name}-again`,
+                          runName: `${selectedRun.name}-again`,
                         });
                         navigate("new");
                       }}

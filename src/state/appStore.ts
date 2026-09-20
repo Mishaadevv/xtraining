@@ -1,16 +1,28 @@
-import { Store } from "./store";
-import { bridge, isDesktop, type ModelExportInfo } from "@/lib/bridge";
+/**
+ * The application store.
+ *
+ * One Store instance, one set of async actions. The renderer never talks to
+ * the bridge from a component except through these actions, so every mutation
+ * has exactly one place to look at.
+ */
+import { bridge, isDesktop } from "@/lib/bridge";
 import { basename } from "@/lib/utils";
+import { Store } from "@/state/store";
 import type {
+  AppInfo,
   AutoReason,
   BackendError,
+  GpuSample,
+  InterpreterCandidate,
   DatasetEntry,
   DatasetReport,
+  DatasetSelection,
   EnvSnapshot,
-  HardwareSnapshot,
   LogEntry,
   Method,
   ModelEntry,
+  ModelExportInfo,
+  ModelInspectInfo,
   Project,
   RunRecord,
   Settings,
@@ -35,7 +47,6 @@ export interface SeriesPoint {
   loss: number | null;
   lr: number | null;
   epoch: number | null;
-  at: number;
 }
 
 export interface GpuPoint {
@@ -48,42 +59,55 @@ export interface GpuPoint {
 
 export interface WizardState {
   step: number;
+  simple: boolean;
   method: Method;
   baseModel: string;
-  modelEntryId: string | null;
-  modelInfo: Record<string, unknown> | null;
+  baseModelEntryId: string | null;
+  modelInfo: ModelInspectInfo | null;
   datasetId: string | null;
   datasetReport: DatasetReport | null;
   projectId: string | null;
-  projectName: string;
-  simple: boolean;
+  runName: string;
   config: TrainingConfig | null;
-  autoReasons: AutoReason[];
-  autoIssue: BackendError | null;
-  estimate: VramEstimate | null;
+  reasons: AutoReason[];
   issues: ValidationIssue[];
-  running: boolean;
-  error: BackendError | null;
-  blockers: BackendError[];
-  lastUpdated: number | null;
+  estimate: VramEstimate | null;
+  note: BackendError | null;
+  starting: boolean;
+  lastAutoAt: number | null;
 }
 
 export interface PlaygroundState {
   modelDir: string | null;
   modelName: string | null;
-  loaded: boolean;
+  mode: string | null;
   loading: boolean;
+  loaded: boolean;
   generating: boolean;
   streamed: string;
+  thinkingStreamed: string;
   output: string;
+  thinking: string;
   error: BackendError | null;
-  history: { prompt: string; output: string; seconds: number | null; tokensPerSecond: number | null }[];
-  params: { maxNewTokens: number; temperature: number; topP: number; repetitionPenalty: number };
+  history: {
+    prompt: string;
+    output: string;
+    thinking: string;
+    seconds: number | null;
+    tokensPerSecond: number | null;
+  }[];
+  params: {
+    maxNewTokens: number;
+    temperature: number;
+    topP: number;
+    repetitionPenalty: number;
+    thinking: boolean;
+  };
 }
 
 export interface RuntimeInstallState {
   running: boolean;
-  phase: "idle" | "started" | "output" | "done" | "failed";
+  phase: "idle" | "running" | "done" | "failed";
   lines: string[];
   exitCode: number | null;
   error: string | null;
@@ -95,7 +119,7 @@ export interface AppState {
   bootError: BackendError | null;
   page: Page;
   env: EnvSnapshot;
-  appInfo: Record<string, unknown> | null;
+  appInfo: AppInfo | null;
   settings: Settings | null;
   projects: Project[];
   datasets: DatasetEntry[];
@@ -107,7 +131,6 @@ export interface AppState {
   gpuSeries: GpuPoint[];
   liveGpu: GpuPoint | null;
   logs: LogEntry[];
-  logsLoading: boolean;
   wizard: WizardState;
   playground: PlaygroundState;
   toasts: Toast[];
@@ -115,44 +138,62 @@ export interface AppState {
   runtimeInstall: RuntimeInstallState;
 }
 
+/* ------------------------------------------------------------------ shape */
+
+const initialEnv: EnvSnapshot = {
+  loading: false,
+  system: null,
+  smi: null,
+  hardware: null,
+  python: null,
+  dependencies: null,
+  backends: null,
+  installPlan: null,
+  error: null,
+  refreshedAt: null,
+};
+
 const initialWizard: WizardState = {
   step: 0,
+  simple: true,
   method: "lora",
   baseModel: "",
-  modelEntryId: null,
+  baseModelEntryId: null,
   modelInfo: null,
   datasetId: null,
   datasetReport: null,
   projectId: null,
-  projectName: "",
-  simple: true,
+  runName: "",
   config: null,
-  autoReasons: [],
-  autoIssue: null,
-  estimate: null,
+  reasons: [],
   issues: [],
-  running: false,
+  estimate: null,
+  note: null,
+  starting: false,
+  lastAutoAt: null,
+};
+
+const initialPlayground: PlaygroundState = {
+  modelDir: null,
+  modelName: null,
+  mode: null,
+  loading: false,
+  loaded: false,
+  generating: false,
+  streamed: "",
+  thinkingStreamed: "",
+  output: "",
+  thinking: "",
   error: null,
-  blockers: [],
-  lastUpdated: null,
+  history: [],
+  params: { maxNewTokens: 256, temperature: 0.7, topP: 0.9, repetitionPenalty: 1.1, thinking: false },
 };
 
 const initialState: AppState = {
   booted: false,
   bootError: null,
   page: "projects",
-  env: {
-    loading: false,
-    system: null,
-    smi: null,
-    hardware: null,
-    python: null,
-    dependencies: null,
-    backends: null,
-    installPlan: null,
-    error: null,
-    refreshedAt: null,
-  },
+  env: initialEnv,
   appInfo: null,
   settings: null,
   projects: [],
@@ -165,20 +206,8 @@ const initialState: AppState = {
   gpuSeries: [],
   liveGpu: null,
   logs: [],
-  logsLoading: false,
   wizard: initialWizard,
-  playground: {
-    modelDir: null,
-    modelName: null,
-    loaded: false,
-    loading: false,
-    generating: false,
-    streamed: "",
-    output: "",
-    error: null,
-    history: [],
-    params: { maxNewTokens: 256, temperature: 0.7, topP: 0.9, repetitionPenalty: 1.1 },
-  },
+  playground: initialPlayground,
   toasts: [],
   busy: {},
   runtimeInstall: { running: false, phase: "idle", lines: [], exitCode: null, error: null, venv: null },
@@ -186,27 +215,29 @@ const initialState: AppState = {
 
 export const appStore = new Store<AppState>(initialState);
 
-const MAX_LOGS = 1500;
-const MAX_SERIES = 2000;
-const MAX_GPU = 1200;
+const MAX_LOG_LINES = 1200;
+const MAX_SERIES_POINTS = 4000;
+const MAX_GPU_POINTS = 900;
 
 let toastCounter = 0;
 let logCounter = 0;
 
-/* ------------------------------------------------------------------ toasts */
+/* ----------------------------------------------------------------- toasts */
 
 export function pushToast(toast: Omit<Toast, "id">): void {
   toastCounter += 1;
   const id = `toast_${toastCounter}`;
   appStore.set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }));
-  setTimeout(() => dismissToast(id), toast.tone === "bad" ? 12000 : 6000);
+  const timeout = setTimeout(() => dismissToast(id), toast.tone === "bad" ? 12000 : 6000);
+  // A background timer must never hold the process open on shutdown.
+  (timeout as unknown as { unref?: () => void }).unref?.();
 }
 
 export function dismissToast(id: string): void {
-  appStore.set((state) => ({ toasts: state.toasts.filter((entry) => entry.id !== id) }));
+  appStore.set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }));
 }
 
-export function toastError(error: BackendError | undefined | null, title = "Something went wrong"): void {
+export function toastError(error: BackendError | null | undefined, title: string): void {
   if (!error) return;
   pushToast({
     title,
@@ -215,60 +246,61 @@ export function toastError(error: BackendError | undefined | null, title = "Some
   });
 }
 
-function setBusy(key: string, value: boolean): void {
-  appStore.set((state) => ({ busy: { ...state.busy, [key]: value } }));
-}
-
-/* --------------------------------------------------------------- logging */
-
-function classifyLog(entry: LogEntry): LogEntry {
-  const detail = entry.detail || {};
-  const level = (detail.level as string) || "info";
-  return {
-    ...entry,
-    level: level === "warn" || level === "error" ? (level as LogEntry["level"]) : "info",
-  };
-}
+/* ------------------------------------------------------------------- logs */
 
 export function appendLog(entry: Omit<LogEntry, "key" | "at"> & { at?: number }): void {
   logCounter += 1;
-  const full = classifyLog({
+  const full: LogEntry = {
     key: `log_${logCounter}`,
+    at: entry.at ?? Date.now(),
     stream: entry.stream,
     level: entry.level,
     message: entry.message,
-    at: entry.at ?? Date.now(),
     event: entry.event,
-    detail: entry.detail,
-  });
-  appStore.set((state) => ({ logs: [...state.logs, full].slice(-MAX_LOGS) }));
+  };
+  appStore.set((state) => ({ logs: [...state.logs, full].slice(-MAX_LOG_LINES) }));
 }
 
 export function clearLogs(): void {
   appStore.set({ logs: [] });
 }
 
-/* -------------------------------------------------------------- navigation */
+/** One readable line per protocol event, for the log panel. */
+export function formatEventLog(event: string, detail: Record<string, unknown>): string {
+  const message = detail.message as string | undefined;
+  const level = (detail.level as string) || "info";
+  if (event === "log") return `[${level}] ${message ?? ""}`;
+  if (event === "training-progress") {
+    const parts = [`step ${detail.step ?? "?"}/${detail.total_steps ?? "?"}`];
+    if (detail.loss != null) parts.push(`loss ${Number(detail.loss).toFixed(4)}`);
+    if (detail.learning_rate != null) parts.push(`lr ${Number(detail.learning_rate).toExponential(2)}`);
+    if (detail.epoch != null) parts.push(`epoch ${Number(detail.epoch).toFixed(2)}`);
+    return parts.join(" · ");
+  }
+  if (message) return `${event}: ${message}`;
+  return event;
+}
+
+function setBusy(key: string, value: boolean): void {
+  appStore.set((state) => ({ busy: { ...state.busy, [key]: value } }));
+}
+
+/* ------------------------------------------------------------- navigation */
 
 export function navigate(page: Page): void {
   appStore.set({ page });
 }
 
-export function setWizard(
-  patch: Partial<WizardState> | ((wizard: WizardState) => Partial<WizardState>),
-): void {
-  appStore.set((state) => ({
-    wizard: {
-      ...state.wizard,
-      ...(typeof patch === "function" ? patch(state.wizard) : patch),
-    },
-  }));
+export function patchWizard(patch: Partial<WizardState>): void {
+  appStore.set((state) => ({ wizard: { ...state.wizard, ...patch } }));
 }
 
+/** Alias kept for call sites that patch more than one wizard field at once. */
+export const setWizard = patchWizard;
+
 export function resetWizard(preset: Partial<WizardState> = {}): void {
-  // Settings → Advanced decides whether new runs open in Simple or Advanced, and
-  // turning automatic configuration off means the user wants the full form. The
-  // wizard's own toggle still overrides this for the current run.
+  // Settings decide the initial Simple/Advanced state; switching automatic
+  // configuration off means the user wants the full form instead.
   const settings = appStore.get().settings;
   const simple = settings?.autoConfigure === false ? false : settings?.simpleMode ?? initialWizard.simple;
   appStore.set({ wizard: { ...initialWizard, simple, ...preset } });
@@ -284,7 +316,7 @@ export async function bootstrap(): Promise<void> {
       booted: true,
       bootError: {
         code: "desktop_only",
-        message: "The desktop bridge is not available.",
+        message: "The desktop bridge is not connected.",
         hint: "This window is rendering the interface without the Electron shell. "
           + "Launch ZeqouXTraining with `npm run dev` to train models.",
       },
@@ -295,16 +327,16 @@ export async function bootstrap(): Promise<void> {
 
   const [info, settings] = await Promise.all([bridge.app.info(), bridge.settings.get()]);
   appStore.set({
-    appInfo: info.ok ? (info as Record<string, unknown>) : null,
+    appInfo: info.ok ? info.info ?? null : null,
     settings: settings.settings ?? null,
   });
-  applyTheme(settings.settings?.theme ?? "dark");
+  if (settings.settings?.theme) applyTheme(settings.settings.theme);
 
   await Promise.all([refreshEnv(), refreshProjects(), refreshDatasets(), refreshModels(), refreshRuns()]);
   appStore.set({ booted: true });
 
-  const runs = appStore.get().runs;
-  const live = runs.find((run) => run.status === "running" || run.status === "starting");
+  // Re-attach to a run that is still going (app restarted mid-training).
+  const live = appStore.get().runs.find((run) => run.status === "running" || run.status === "starting");
   if (live) {
     appStore.set({ page: "training", selectedRunId: live.id, selectedRun: live });
     await loadRunDetails(live.id);
@@ -313,43 +345,35 @@ export async function bootstrap(): Promise<void> {
 
 export function applyTheme(theme: "dark" | "light"): void {
   document.documentElement.dataset.theme = theme;
-  document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
-/* ---------------------------------------------------------------- live refresh */
+/* ------------------------------------------------------------ auto refresh */
 
-// The push channels only cover a live training run; everything else would sit
-// stale until the user pressed Refresh. These intervals keep the lists and the
-// environment snapshot current on their own.
+// Push channels only cover a live run. Everything else would sit stale until
+// the user pressed Refresh, so the lists and the environment snapshot refresh
+// themselves on a quiet cadence instead.
 const RUNS_REFRESH_MS = 4000;
 const LIBRARY_REFRESH_MS = 15000;
 const ENV_REFRESH_MS = 60000;
 
-/** Start the background refresh loops; returns a stop function. */
 export function startAutoRefresh(): () => void {
   if (!isDesktop) return () => {};
 
-  const runsTimer = setInterval(() => {
-    void refreshRuns();
-  }, RUNS_REFRESH_MS);
+  const runsTimer = setInterval(() => void refreshRuns(), RUNS_REFRESH_MS);
   const libraryTimer = setInterval(() => {
     void refreshDatasets();
     void refreshModels();
     void refreshProjects();
   }, LIBRARY_REFRESH_MS);
-  const envTimer = setInterval(() => {
-    void refreshEnv();
-  }, ENV_REFRESH_MS);
+  const envTimer = setInterval(() => void refreshEnv(), ENV_REFRESH_MS);
 
   const stop = () => {
     clearInterval(runsTimer);
     clearInterval(libraryTimer);
     clearInterval(envTimer);
   };
-  // A background loop must never hold the process open on shutdown.
   for (const timer of [runsTimer, libraryTimer, envTimer]) {
-    const unref = (timer as unknown as { unref?: () => void }).unref;
-    if (typeof unref === "function") unref.call(timer);
+    (timer as unknown as { unref?: () => void }).unref?.();
   }
   return stop;
 }
@@ -359,19 +383,25 @@ export function startAutoRefresh(): () => void {
 export async function refreshEnv(force = false): Promise<void> {
   if (!isDesktop) return;
   appStore.set((state) => ({ env: { ...state.env, loading: true } }));
+
   const result = await bridge.env.detect({ force });
   if (!result.ok) {
     appStore.set((state) => ({
-      env: { ...state.env, loading: false, error: (result.error as BackendError) ?? null },
+      env: {
+        ...state.env,
+        loading: false,
+        error: result.error ?? { message: "Environment detection failed." },
+      },
     }));
     return;
   }
+
   appStore.set((state) => ({
     env: {
       loading: false,
       system: (result.system as EnvSnapshot["system"]) ?? state.env.system,
-      smi: (result.smi as EnvSnapshot["smi"]) ?? state.env.smi,
-      hardware: (result.hardware as HardwareSnapshot | null) ?? state.env.hardware,
+      smi: (result.smi as GpuSample) ?? state.env.smi,
+      hardware: (result.hardware as EnvSnapshot["hardware"]) ?? state.env.hardware,
       python: (result.python as EnvSnapshot["python"]) ?? state.env.python,
       dependencies: (result.dependencies as EnvSnapshot["dependencies"]) ?? state.env.dependencies,
       backends: (result.backends as EnvSnapshot["backends"]) ?? state.env.backends,
@@ -385,61 +415,63 @@ export async function refreshEnv(force = false): Promise<void> {
 export async function refreshHardware(): Promise<void> {
   if (!isDesktop) return;
   const result = await bridge.hardware.detect();
-  if (!result.ok) return;
+  if (!result.ok || !result.hardware) return;
   appStore.set((state) => ({ env: { ...state.env, hardware: result.hardware ?? null } }));
 }
 
-export async function discoverInterpreters(force = false): Promise<Record<string, unknown> | null> {
+export async function discoverInterpreters(force = false): Promise<InterpreterCandidate[] | null> {
   if (!isDesktop) return null;
   const result = await bridge.env.interpreters({ force });
-  return result.ok ? (result as Record<string, unknown>) : null;
+  if (!result.ok || !result.interpreters) return null;
+  return result.interpreters;
 }
 
-export async function selectInterpreter(executablePath: string | null): Promise<void> {
+export async function selectInterpreter(executablePath: string): Promise<void> {
   const result = await bridge.env.setInterpreter(executablePath);
   if (!result.ok) {
-    toastError(result.error as BackendError, "Could not select the interpreter");
+    toastError(result.error, "Could not select the interpreter");
     return;
   }
   await refreshEnv(true);
   pushToast({ title: "Interpreter updated", tone: "good" });
 }
 
-/* ---------------------------------------------------------- settings side */
+/* --------------------------------------------------------------- settings */
 
 export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   const result = await bridge.settings.set(patch);
   if (!result.ok) {
-    toastError(result.error as BackendError, "Could not save settings");
+    toastError(result.error, "Could not save the setting");
     return;
   }
   appStore.set({ settings: result.settings ?? null });
   if (patch.theme) applyTheme(patch.theme);
-  // Toggling Simple mode should be visible immediately on a wizard that has
-  // not been configured yet, not only on the next new run.
-  if (typeof patch.simpleMode === "boolean" && !appStore.get().wizard.config) {
-    setWizard({ simple: patch.simpleMode });
-  }
-  // Turning automatic configuration off on an unconfigured wizard drops straight
-  // into Advanced, so the controls it governs are actually visible.
-  if (patch.autoConfigure === false && !appStore.get().wizard.config) {
-    setWizard({ simple: false });
-  }
 }
 
-export async function saveHfToken(token: string | null): Promise<void> {
+export async function saveHfToken(token: string | null): Promise<boolean> {
   const result = await bridge.settings.setToken(token);
   if (!result.ok) {
-    toastError(result.error as BackendError, "Could not store the token");
-    return;
+    toastError(result.error, "Could not store the token");
+    return false;
   }
   pushToast({
     title: token ? "Token stored" : "Token removed",
-    message: token
-      ? "Encrypted with the operating system keychain."
-      : undefined,
+    message: token ? "Encrypted with the operating system keychain." : undefined,
     tone: "good",
   });
+  return true;
+}
+
+export async function resetSettings(): Promise<void> {
+  const result = await bridge.settings.reset();
+  if (!result.ok) {
+    toastError(result.error, "Could not reset settings");
+    return;
+  }
+  appStore.set({ settings: result.settings ?? null });
+  if (result.settings?.theme) applyTheme(result.settings.theme);
+  await refreshEnv(true);
+  pushToast({ title: "Settings restored to defaults", tone: "good" });
 }
 
 /* -------------------------------------------------------------- registries */
@@ -453,29 +485,24 @@ export async function refreshProjects(): Promise<void> {
 export async function refreshDatasets(): Promise<void> {
   if (!isDesktop) return;
   const result = await bridge.datasets.list();
-  if (result.ok && Array.isArray(result.datasets)) {
-    appStore.set({ datasets: result.datasets as DatasetEntry[] });
-  }
+  if (result.ok && result.datasets) appStore.set({ datasets: result.datasets });
 }
 
 export async function refreshModels(): Promise<void> {
   if (!isDesktop) return;
   const result = await bridge.models.list();
-  if (result.ok && Array.isArray(result.models)) {
-    appStore.set({ models: result.models as ModelEntry[] });
-  }
+  if (result.ok && result.models) appStore.set({ models: result.models });
 }
 
 export async function refreshRuns(): Promise<void> {
   if (!isDesktop) return;
   const result = await bridge.training.runs(200);
-  if (result.ok && result.runs) {
-    appStore.set({ runs: result.runs });
-    const selected = appStore.get().selectedRunId;
-    if (selected) {
-      const current = result.runs.find((run) => run.id === selected);
-      if (current) appStore.set({ selectedRun: current });
-    }
+  if (!result.ok || !result.runs) return;
+  appStore.set({ runs: result.runs });
+  const selectedId = appStore.get().selectedRunId;
+  if (selectedId) {
+    const selected = result.runs.find((run) => run.id === selectedId);
+    if (selected) appStore.set({ selectedRun: selected });
   }
 }
 
@@ -483,7 +510,7 @@ export async function refreshRuns(): Promise<void> {
 
 export async function pickAndImportDatasets(): Promise<void> {
   const picked = await bridge.dialogs.pickDataset();
-  const paths = (picked.paths as string[]) || [];
+  const paths = (picked.paths as string[] | undefined) ?? [];
   if (!paths.length) return;
   await importDatasetPaths(paths);
 }
@@ -493,12 +520,13 @@ export async function importDatasetPaths(paths: string[]): Promise<void> {
   try {
     const result = await bridge.datasets.import(paths);
     if (!result.ok) {
-      toastError(result.error as BackendError, "Import failed");
+      toastError(result.error, "Import failed");
       return;
     }
-    const imported = (result.imported as DatasetEntry[]) || [];
-    const failed = (result.failed as { path: string; error: BackendError }[]) || [];
     await refreshDatasets();
+
+    const imported = result.imported ?? [];
+    const failed = result.failed ?? [];
     if (imported.length) {
       pushToast({
         title: imported.length === 1 ? "Dataset imported" : `${imported.length} datasets imported`,
@@ -506,7 +534,6 @@ export async function importDatasetPaths(paths: string[]): Promise<void> {
         tone: "good",
       });
       for (const dataset of imported) {
-        // eslint-disable-next-line no-await-in-loop - sequential keeps the report order predictable
         await validateDataset(dataset.id);
       }
     }
@@ -518,70 +545,25 @@ export async function importDatasetPaths(paths: string[]): Promise<void> {
   }
 }
 
-/** Ask the user for a folder. Returns null when they cancel. */
 export async function pickDirectory(title: string): Promise<string | null> {
   if (!isDesktop) return null;
   const result = await bridge.dialogs.pickDirectory(title);
-  const paths = (result.paths as string[]) || [];
+  const paths = (result.paths as string[] | undefined) ?? [];
   return paths[0] ?? null;
 }
 
-/** Read what a trained model folder holds before offering to export it. */
-export async function inspectModelExport(modelId: string): Promise<ModelExportInfo | null> {
-  const result = await bridge.models.exportInfo({ modelId });
-  if (!result.ok || !result.info) {
-    toastError((result.error as BackendError) ?? null, "Could not inspect the model folder");
-    return null;
-  }
-  return result.info;
-}
-
-/**
- * Export a model folder. Copy mode always works; merging the adapter into the
- * base model needs the ML runtime, and the backend refuses honestly without it.
- */
-export async function exportModel(
-  modelId: string,
-  outputDir: string,
-  merge: boolean,
-): Promise<{ outputDir: string; mode: string; files: string[] } | null> {
-  setBusy("exportModel", true);
-  try {
-    const result = await bridge.models.export({ modelId, outputDir, merge });
-    if (!result.ok) {
-      toastError((result.error as BackendError) ?? null, "Export failed");
-      return null;
-    }
-    const output = String(result.output_dir ?? outputDir);
-    pushToast({
-      title: merge ? "Merged model exported" : "Export finished",
-      message: output,
-      tone: "good",
-    });
-    return {
-      outputDir: output,
-      mode: String(result.mode ?? "copy"),
-      files: (result.files as string[]) ?? [],
-    };
-  } finally {
-    setBusy("exportModel", false);
-  }
-}
-
-/**
- * Register a Hugging Face dataset by id. The rows are fetched by the backend
- * during validation or at training start, so this is instant.
- */
-export async function addHfDataset(source: string, split = "train"): Promise<DatasetEntry | null> {
+export async function addHfDataset(id: string, split = "train"): Promise<DatasetEntry | null> {
+  const trimmed = id.trim();
+  if (!trimmed) return null;
   setBusy("importDataset", true);
   try {
-    const result = await bridge.datasets.addHf({ id: source, split });
+    const result = await bridge.datasets.addHf({ id: trimmed, split });
     if (!result.ok) {
-      toastError(result.error as BackendError, "Could not add the dataset");
+      toastError(result.error, "Could not add the Hub dataset");
       return null;
     }
     await refreshDatasets();
-    const entry = (result.dataset as DatasetEntry | undefined) ?? null;
+    const entry = result.dataset ?? null;
     if (entry) {
       pushToast({ title: "Hub dataset added", message: "Validating now…", tone: "good" });
       await validateDataset(entry.id);
@@ -595,19 +577,18 @@ export async function addHfDataset(source: string, split = "train"): Promise<Dat
 export async function validateDataset(id: string, contextLength?: number): Promise<DatasetReport | null> {
   setBusy(`dataset:${id}`, true);
   try {
-    const result = await bridge.datasets.validate({ id, contextLength });
-    if (!result.ok || !result.report) {
-      toastError((result.error as BackendError) ?? null, "Validation failed");
+    const wizard = appStore.get().wizard;
+    const length = contextLength ?? wizard.config?.context_length ?? 512;
+    const result = await bridge.datasets.validate({ id, contextLength: length });
+    if (!result.ok) {
+      toastError(result.error, "Validation failed");
       return null;
     }
+    const report = result.report ?? null;
     await refreshDatasets();
-    const report = result.report;
-    if (report.status === "errors") {
-      pushToast({
-        title: "Dataset has problems",
-        message: report.issues.find((issue) => issue.severity === "error")?.message,
-        tone: "warn",
-      });
+    if (report?.status === "errors") {
+      const first = report.issues.find((issue) => issue.severity === "error");
+      pushToast({ title: "Dataset has problems", message: first?.message, tone: "warn" });
     }
     return report;
   } finally {
@@ -615,30 +596,58 @@ export async function validateDataset(id: string, contextLength?: number): Promi
   }
 }
 
-export async function previewDataset(id: string, limit = 5): Promise<string[] | null> {
+export async function previewDataset(id: string, limit = 5): Promise<string[]> {
   const result = await bridge.datasets.preview({ id, limit });
   if (!result.ok) {
-    toastError(result.error as BackendError, "Preview failed");
-    return null;
+    toastError(result.error, "Preview failed");
+    return [];
   }
-  return (result.samples as string[]) || [];
+  return result.samples ?? [];
 }
 
 export async function removeDataset(id: string): Promise<void> {
   const result = await bridge.datasets.remove(id);
   if (!result.ok) {
-    toastError(result.error as BackendError, "Could not remove the dataset");
+    toastError(result.error, "Could not remove the dataset");
     return;
   }
   await refreshDatasets();
+  const wizard = appStore.get().wizard;
+  if (wizard.datasetId === id) patchWizard({ datasetId: null, datasetReport: null });
   pushToast({ title: "Dataset removed", tone: "info" });
+}
+
+/**
+ * Validate every dataset in the library, one at a time: the built-in set is
+ * large and a Python process per file in parallel would only fight over the
+ * same cores.
+ */
+export async function validateAllDatasets(): Promise<void> {
+  const datasets = appStore.get().datasets;
+  if (!datasets.length) return;
+  setBusy("validateAll", true);
+  try {
+    let clean = 0;
+    for (const dataset of datasets) {
+      // eslint-disable-next-line no-await-in-loop - one backend process at a time
+      const report = await validateDataset(dataset.id);
+      if (report && report.status !== "errors") clean += 1;
+    }
+    pushToast({
+      title: "Validation finished",
+      message: `${clean} of ${datasets.length} datasets look good.`,
+      tone: clean === datasets.length ? "good" : "warn",
+    });
+  } finally {
+    setBusy("validateAll", false);
+  }
 }
 
 /* ----------------------------------------------------------------- models */
 
 export async function pickAndAddLocalModel(): Promise<void> {
   const picked = await bridge.dialogs.pickModelFolder();
-  const paths = (picked.paths as string[]) || [];
+  const paths = (picked.paths as string[] | undefined) ?? [];
   if (!paths.length) return;
   await addModel(paths[0]);
 }
@@ -649,19 +658,21 @@ export async function addModel(source: string): Promise<ModelEntry | null> {
   setBusy("addModel", true);
   try {
     const result = await bridge.models.add(trimmed);
-    if (!result.ok || !result.model) {
-      toastError((result.error as BackendError) ?? null, "Could not add the model");
+    if (!result.ok) {
+      toastError(result.error, "Could not add the model");
       return null;
     }
     await refreshModels();
-    const issues = result.model.issues || [];
-    const blocking = issues.filter((issue) => issue.severity === "error");
-    pushToast({
-      title: "Model added",
-      message: blocking.length ? blocking[0].message : result.model.name,
-      tone: blocking.length ? "warn" : "good",
-    });
-    return result.model;
+    const model = result.model ?? null;
+    if (model) {
+      const blocking = model.issues.find((issue) => issue.severity === "error");
+      pushToast({
+        title: "Model added",
+        message: blocking ? blocking.message : model.name,
+        tone: blocking ? "warn" : "good",
+      });
+    }
+    return model;
   } finally {
     setBusy("addModel", false);
   }
@@ -670,26 +681,99 @@ export async function addModel(source: string): Promise<ModelEntry | null> {
 export async function removeModel(id: string): Promise<void> {
   const result = await bridge.models.remove(id);
   if (!result.ok) {
-    toastError(result.error as BackendError, "Could not remove the model");
+    toastError(result.error, "Could not remove the model");
     return;
   }
   await refreshModels();
   pushToast({ title: "Model removed", tone: "info" });
 }
 
-/* ----------------------------------------------------------------- wizard */
+export async function inspectModelExport(modelId: string): Promise<ModelExportInfo | null> {
+  const result = await bridge.models.exportInfo({ modelId });
+  if (!result.ok || !result.info) {
+    toastError(result.error, "Could not inspect the model folder");
+    return null;
+  }
+  return result.info;
+}
 
-export async function wizardSelectModel(source: string, entryId: string | null): Promise<void> {
-  setWizard({ baseModel: source, modelEntryId: entryId, modelInfo: null, autoReasons: [], estimate: null });
-  if (!isDesktop || !source) return;
+export async function exportModel(
+  modelId: string,
+  outputDir: string,
+  merge: boolean,
+): Promise<{ outputDir: string; mode: string; files: string[] } | null> {
+  setBusy("exportModel", true);
+  try {
+    const result = await bridge.models.export({ modelId, outputDir, merge });
+    if (!result.ok) {
+      toastError(result.error, "Export failed");
+      return null;
+    }
+    const output = result.output_dir ?? outputDir;
+    pushToast({
+      title: merge ? "Merged model exported" : "Export finished",
+      message: output,
+      tone: "good",
+    });
+    return {
+      outputDir: output,
+      mode: result.mode ?? "copy",
+      files: result.files ?? [],
+    };
+  } finally {
+    setBusy("exportModel", false);
+  }
+}
+
+export async function removeProject(id: string): Promise<void> {
+  const result = await bridge.projects.remove(id);
+  if (!result.ok) {
+    toastError(result.error, "Could not delete the project");
+    return;
+  }
+  await refreshProjects();
+  pushToast({ title: "Project deleted", message: "Its runs remain in history.", tone: "info" });
+}
+
+/* ----------------------------------------------------------------- paths */
+
+export async function openPath(target: string | null | undefined): Promise<void> {
+  if (!target) return;
+  const result = await bridge.shell.openPath(target);
+  if (!result.ok) toastError(result.error, "Could not open the folder");
+}
+
+export async function revealPath(target: string | null | undefined): Promise<void> {
+  if (!target) return;
+  const result = await bridge.shell.showItem(target);
+  if (!result.ok) toastError(result.error, "Could not reveal the file");
+}
+
+export async function openExternal(url: string): Promise<void> {
+  if (!url) return;
+  const result = await bridge.shell.openExternal(url);
+  if (!result.ok) toastError(result.error, "Could not open the link");
+}
+
+/* -------------------------------------------------------------- wizard */
+
+export async function wizardSelectModel(source: string, entryId: string | null = null): Promise<void> {
+  patchWizard({
+    baseModel: source,
+    baseModelEntryId: entryId,
+    modelInfo: null,
+    estimate: null,
+    note: null,
+  });
+  if (!isDesktop || !source.trim()) return;
 
   setBusy("inspectModel", true);
   try {
-    const result = await bridge.models.inspect(source);
+    const result = await bridge.models.inspect(source.trim());
     if (result.ok && result.info) {
-      setWizard({ modelInfo: result.info as Record<string, unknown> });
+      patchWizard({ modelInfo: result.info });
     } else if (result.error) {
-      setWizard({ autoIssue: result.error as BackendError });
+      patchWizard({ note: result.error });
     }
   } finally {
     setBusy("inspectModel", false);
@@ -697,15 +781,18 @@ export async function wizardSelectModel(source: string, entryId: string | null):
   await runAutoConfig();
 }
 
-export async function wizardSelectDataset(id: string): Promise<void> {
-  const entry = appStore.get().datasets.find((dataset) => dataset.id === id);
-  setWizard({ datasetId: id, datasetReport: entry?.report ?? null });
+export async function wizardSelectDataset(id: string, options: { validate?: boolean } = {}): Promise<void> {
+  const entry = appStore.get().datasets.find((dataset) => dataset.id === id) ?? null;
+  patchWizard({ datasetId: id, datasetReport: entry?.report ?? null });
   if (!entry) return;
+  // A quiet selection (the built-in default standing in until the user picks
+  // their own) records the choice without spawning the Python backend.
+  if (options.validate === false) return;
 
   setBusy("wizardDataset", true);
   try {
     const report = await validateDataset(id, appStore.get().wizard.config?.context_length ?? 512);
-    setWizard({ datasetReport: report });
+    patchWizard({ datasetReport: report });
   } finally {
     setBusy("wizardDataset", false);
   }
@@ -713,57 +800,69 @@ export async function wizardSelectDataset(id: string): Promise<void> {
 }
 
 export async function wizardSelectMethod(method: Method): Promise<void> {
-  setWizard({ method });
+  patchWizard({ method });
   await runAutoConfig();
 }
 
 export async function runAutoConfig(): Promise<void> {
   if (!isDesktop) return;
   const wizard = appStore.get().wizard;
-  if (!wizard.baseModel && !wizard.datasetId) return;
+  if (!wizard.baseModel.trim() && !wizard.datasetId) return;
 
   setBusy("autoConfig", true);
   try {
-    // Live environment first: the Check step must reflect the interpreter
+    // A fresh environment first: the Check step must reflect the interpreter
     // that will actually run training, not a stale snapshot.
     await refreshEnv(true);
-    const datasetPath = resolveDatasetPath(wizard.datasetId);
+
+    const current = appStore.get().wizard;
+    const dataset = current.datasetId
+      ? appStore.get().datasets.find((entry) => entry.id === current.datasetId) ?? null
+      : null;
+    // Hub datasets are identified by id on the backend; auto-config reads only
+    // local files, so a Hub selection simply contributes no dataset path.
+    const datasetPath = dataset && dataset.format !== "hf" ? dataset.path : null;
+
     const result = await bridge.training.autoConfig({
-      baseModel: wizard.baseModel || undefined,
-      datasetPath: datasetPath || undefined,
-      contextLength: wizard.config?.context_length ?? 512,
-      method: wizard.method,
-      // Off means: give me the documented defaults, not choices made for me.
+      baseModel: current.baseModel.trim() || undefined,
+      datasetPath: datasetPath ?? undefined,
+      contextLength: current.config?.context_length ?? 512,
+      method: current.method,
       baseline: appStore.get().settings?.autoConfigure === false,
     });
 
     if (!result.ok) {
-      setWizard({ autoIssue: (result.error as BackendError) ?? null });
+      patchWizard({ note: result.error ?? { message: "Automatic configuration failed." } });
       return;
     }
 
-    const config = result.config as TrainingConfig | undefined;
-    const reasons = (result.reasons as AutoReason[]) || [];
-    const issues = (result.issues as ValidationIssue[]) || [];
-    const estimate = (result.estimate as VramEstimate) || null;
-    const hardware = (result.hardware as HardwareSnapshot) || null;
-    const modelInfo = (result.model as Record<string, unknown>) || null;
-    const datasetReport = (result.dataset_report as DatasetReport) || null;
+    const config = (result.config as TrainingConfig | undefined) ?? null;
+    const reasons = (result.reasons as AutoReason[] | undefined) ?? [];
+    const issues = (result.issues as ValidationIssue[] | undefined) ?? [];
+    const estimate = (result.estimate as VramEstimate | undefined) ?? null;
+    const hardware = result.hardware as EnvSnapshot["hardware"] | undefined;
+    const modelInfo = (result.model as ModelInspectInfo | undefined) ?? null;
+    const datasetReport = (result.dataset_report as DatasetReport | undefined) ?? null;
     const modelError = result.model_error as string | undefined;
 
-    setWizard((current) => ({
-      ...current,
-      config: config ? { ...config, method: current.method, base_model: current.baseModel || config.base_model } : current.config,
-      autoReasons: reasons,
+    patchWizard({
+      config: config
+        ? {
+            ...config,
+            method: current.method,
+            base_model: current.baseModel.trim() || config.base_model,
+          }
+        : current.config,
+      reasons,
       issues,
       estimate,
-      modelInfo: modelInfo || current.modelInfo,
-      datasetReport: datasetReport || current.datasetReport,
-      autoIssue: modelError ? { code: "model_inspect", message: modelError } : null,
-      baseModel: current.baseModel || config?.base_model || "",
-      projectName: current.projectName || defaultProjectName(current.baseModel, datasetPath),
-      lastUpdated: Date.now(),
-    }));
+      modelInfo: modelInfo ?? current.modelInfo,
+      datasetReport: datasetReport ?? current.datasetReport,
+      baseModel: current.baseModel.trim() || config?.base_model || "",
+      runName: current.runName || defaultRunName(current.baseModel, datasetPath),
+      note: modelError ? { code: "model_inspect", message: modelError } : current.note,
+      lastAutoAt: Date.now(),
+    });
 
     if (hardware) {
       appStore.set((state) => ({ env: { ...state.env, hardware } }));
@@ -773,128 +872,157 @@ export async function runAutoConfig(): Promise<void> {
   }
 }
 
-function defaultProjectName(model: string, datasetPath: string | null): string {
-  const modelName = basename(model) || "model";
-  const dataName = datasetPath ? basename(datasetPath).replace(/\.[^.]+$/, "") : "dataset";
-  return `${modelName} · ${dataName}`;
-}
-
-export function resolveDatasetPath(datasetId: string | null): string | null {
-  if (!datasetId) return null;
-  const entry = appStore.get().datasets.find((dataset) => dataset.id === datasetId);
-  return entry ? entry.path : null;
+function defaultRunName(model: string, datasetPath: string | null): string {
+  const modelPart = basename(model) || "model";
+  const dataPart = datasetPath ? basename(datasetPath).replace(/\.[^.]+$/, "") : "dataset";
+  return `${modelPart}-${dataPart}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 export function updateWizardConfig(patch: Partial<TrainingConfig>): void {
   const current = appStore.get().wizard.config;
   if (!current) return;
-  setWizard({ config: { ...current, ...patch } });
+  patchWizard({ config: { ...current, ...patch } });
+  scheduleEstimateRefresh();
+}
+
+let estimateTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Debounced VRAM re-estimate while the user edits the form. */
+function scheduleEstimateRefresh(): void {
+  if (estimateTimer) clearTimeout(estimateTimer);
+  estimateTimer = setTimeout(() => {
+    estimateTimer = null;
+    void refreshWizardEstimate();
+  }, 400);
+  (estimateTimer as unknown as { unref?: () => void }).unref?.();
 }
 
 export async function refreshWizardEstimate(): Promise<void> {
   if (!isDesktop) return;
   const wizard = appStore.get().wizard;
   if (!wizard.config) return;
-  const devices = appStore.get().env.hardware?.cuda?.devices ?? [];
+  // CPU runs are bounded by system RAM, CUDA runs by VRAM — send the right
+  // budget so the estimate means something for the device actually selected.
+  const hardware = appStore.get().env.hardware;
+  const wantsCpu = wizard.config.device === "cpu";
+  const devices = wantsCpu ? [] : hardware?.cuda.devices ?? [];
   const vram = devices[0]?.total_memory_mb ?? appStore.get().env.smi?.gpu?.memory_total_mb ?? undefined;
+  const ram = hardware?.memory?.total_mb ?? undefined;
 
   const result = await bridge.training.estimate({
     config: wizard.config,
-    modelInfo: wizard.modelInfo || undefined,
-    availableVramMb: vram || undefined,
+    modelInfo: wizard.modelInfo ?? undefined,
+    availableVramMb: vram,
+    availableRamMb: wantsCpu ? ram : undefined,
   });
   if (result.ok && result.estimate) {
-    setWizard({ estimate: result.estimate as VramEstimate });
+    patchWizard({ estimate: result.estimate as unknown as VramEstimate });
   }
 }
 
-/* ------------------------------------------------------------- start run */
+/* ------------------------------------------------------------ start run */
 
 export async function startTraining(): Promise<boolean> {
   const wizard = appStore.get().wizard;
   if (!wizard.config) {
-    pushToast({ title: "Nothing to start", message: "Configure the run first.", tone: "warn" });
+    pushToast({ title: "Nothing to start", message: "Wait for the configuration to be prepared.", tone: "warn" });
     return false;
   }
 
-  const datasetPath = resolveDatasetPath(wizard.datasetId);
-  if (!datasetPath) {
+  // Fall back to the built-in default dataset when nothing was picked: the app
+  // ships with datasets, so "not chosen" still means a real training run.
+  const library = appStore.get().datasets;
+  const dataset = (wizard.datasetId
+    ? library.find((entry) => entry.id === wizard.datasetId)
+    : null)
+    ?? library.find((entry) => entry.builtin && entry.default)
+    ?? library.find((entry) => entry.builtin)
+    ?? null;
+  if (!dataset) {
     pushToast({ title: "Select a dataset", tone: "warn" });
     return false;
   }
-  // From-scratch runs need no base model — that is their entire point.
   if (!wizard.config.base_model && wizard.config.method !== "scratch") {
     pushToast({ title: "Select a base model", tone: "warn" });
     return false;
   }
 
-  const name = (wizard.projectName || "").trim()
-    || defaultProjectName(wizard.config.base_model || (wizard.config.method === "scratch" ? "scratch" : "model"), datasetPath);
-  const datasetEntry = appStore.get().datasets.find((dataset) => dataset.id === wizard.datasetId) ?? null;
-  const isHubDataset = Boolean(datasetEntry && datasetEntry.format === "hf");
+  const name = (wizard.runName || "").trim()
+    || defaultRunName(wizard.config.base_model || (wizard.config.method === "scratch" ? "scratch" : "model"), dataset.path);
+  const isHub = dataset.format === "hf";
+  const selection: DatasetSelection = {
+    // A Hub dataset is referenced by id and downloaded by the backend; a local
+    // one is read in place, so importing costs no disk space.
+    path: isHub ? null : dataset.path,
+    hf_id: isHub ? dataset.hfId ?? dataset.path : null,
+    name: dataset.name,
+    format: dataset.format,
+    mapping: wizard.datasetReport?.mapping ?? dataset.mapping ?? null,
+    split: isHub ? dataset.split ?? "train" : "train",
+  };
 
-  setBusy("startTraining", true);
-  setWizard({ running: true, error: null });
+  setBusy("start", true);
+  patchWizard({ starting: true, note: null });
   try {
-    // The project has to exist before the run starts, so the job manager can
+    // The project must exist before the run starts, so the job manager can
     // record the run against it from the very first event.
     let projectId = wizard.projectId;
     if (!projectId) {
-      const project = await bridge.projects.create({
+      const created = await bridge.projects.create({
         name,
         method: wizard.config.method,
         baseModel: wizard.config.base_model,
-        datasetName: datasetEntry?.name ?? null,
-        datasetPath,
+        datasetName: dataset.name,
+        datasetPath: dataset.path,
         config: wizard.config,
       });
-      if (project.ok && project.project) projectId = project.project.id;
+      if (created.ok && created.project) projectId = created.project.id;
     }
 
     const result = await bridge.training.start({
       name,
       projectId,
-      config: {
-        ...wizard.config,
-        output_name: name,
-        dataset: {
-          // A Hub dataset is identified by id and downloaded by the backend;
-          // a local one is read in place.
-          path: isHubDataset ? null : datasetPath,
-          hf_id: isHubDataset ? datasetEntry?.hfId ?? datasetEntry?.path ?? null : null,
-          name: datasetEntry?.name,
-          format: datasetEntry?.format ?? "auto",
-          mapping: wizard.datasetReport?.mapping ?? datasetEntry?.mapping ?? null,
-          split: datasetEntry?.split ?? "train",
-        },
-      },
-      modelInfo: wizard.modelInfo,
-      datasetName: datasetEntry?.name,
-      datasetReport: wizard.datasetReport,
+      config: { ...wizard.config, output_name: name, dataset: selection },
+      modelInfo: wizard.modelInfo ?? undefined,
+      datasetReport: wizard.datasetReport ?? undefined,
     });
 
     if (!result.ok || !result.runId) {
-      const error = (result.error as BackendError) ?? { message: "The run could not be started." };
-      setWizard({ running: false, error });
+      const error = result.error ?? { message: "The run could not be started." };
+      patchWizard({ starting: false, note: error });
       toastError(error, "Could not start training");
       return false;
     }
 
-    await refreshProjects();
-    await refreshRuns();
+    await Promise.all([refreshProjects(), refreshRuns()]);
     appStore.set({ page: "training", selectedRunId: result.runId, selectedRun: result.record ?? null });
     resetSeriesFromRun(result.record ?? null);
-    await loadRunDetails(result.runId);
     clearLogs();
+    await loadRunDetails(result.runId);
     pushToast({ title: "Training started", message: name, tone: "good" });
     return true;
   } finally {
-    setBusy("startTraining", false);
-    setWizard({ running: false });
+    setBusy("start", false);
+    patchWizard({ starting: false });
   }
 }
 
 /* ----------------------------------------------------------- run control */
+
+function resetSeriesFromRun(run: RunRecord | null): void {
+  const history = run?.history;
+  if (!history || !history.step?.length) {
+    appStore.set({ series: [] });
+    return;
+  }
+  const points: SeriesPoint[] = history.step.map((step, index) => ({
+    step,
+    loss: history.loss?.[index] ?? null,
+    lr: history.learning_rate?.[index] ?? null,
+    epoch: history.epoch?.[index] ?? null,
+  }));
+  appStore.set({ series: points.slice(-MAX_SERIES_POINTS) });
+}
 
 export async function selectRun(runId: string): Promise<void> {
   const run = appStore.get().runs.find((entry) => entry.id === runId) ?? null;
@@ -907,7 +1035,7 @@ export async function loadRunDetails(runId: string): Promise<void> {
   if (!isDesktop) return;
   const [runResult, logResult] = await Promise.all([
     bridge.training.run(runId),
-    bridge.training.log(runId, 600),
+    bridge.training.log(runId, 800),
   ]);
 
   if (runResult.ok && runResult.run) {
@@ -916,104 +1044,61 @@ export async function loadRunDetails(runId: string): Promise<void> {
   }
 
   if (logResult.ok) {
-    const events = (logResult.events as { event: string; detail: Record<string, unknown> }[]) || [];
-    const stderr = (logResult.stderr as string[]) || [];
     const entries: LogEntry[] = [];
-    events.forEach((event, index) => {
-      logCounter += 1;
-      entries.push({
-        key: `file_${logCounter}_${index}`,
+    for (const event of logResult.events ?? []) {
+      appendLog({
         stream: "event",
         level: event.event === "error" ? "error" : "info",
         message: formatEventLog(event.event, event.detail),
-        at: Date.now(),
         event: event.event,
-        detail: event.detail,
       });
-    });
-    for (const line of stderr) {
-      logCounter += 1;
+    }
+    for (const line of logResult.stderr ?? []) {
       entries.push({
-        key: `err_${logCounter}`,
+        key: `err_${logCounter}`, // filled by appendLog normally
+        at: Date.now(),
         stream: "stderr",
         level: /error|traceback|exception/i.test(line) ? "error" : "info",
         message: line,
-        at: Date.now(),
       });
     }
-    appStore.set({ logs: entries.slice(-MAX_LOGS) });
+    if (entries.length) {
+      appStore.set((state) => ({ logs: [...state.logs, ...entries].slice(-MAX_LOG_LINES) }));
+    }
   }
-}
-
-export function formatEventLog(event: string, detail: Record<string, unknown>): string {
-  const message = detail.message as string | undefined;
-  const level = (detail.level as string) || "info";
-  if (event === "log") return `[${level}] ${message ?? ""}`;
-  if (message) return `${event}: ${message}`;
-  if (event === "training-progress") {
-    const parts = [`step ${detail.step ?? "?"}/${detail.total_steps ?? "?"}`];
-    if (detail.loss != null) parts.push(`loss ${Number(detail.loss).toFixed(4)}`);
-    if (detail.learning_rate != null) parts.push(`lr ${Number(detail.learning_rate).toExponential(2)}`);
-    if (detail.epoch != null) parts.push(`epoch ${detail.epoch}`);
-    return `training-progress: ${parts.join(" · ")}`;
-  }
-  return `${event}: ${JSON.stringify(detail)}`;
-}
-
-function resetSeriesFromRun(run: RunRecord | null): void {
-  if (!run || !run.history) {
-    appStore.set({ series: [] });
-    return;
-  }
-  const history = run.history;
-  const steps = history.step || [];
-  const losses = history.loss || [];
-  const rates = history.lr || [];
-  const epochs = history.epoch || [];
-  const points: SeriesPoint[] = steps.map((step, index) => ({
-    step,
-    loss: losses[index] ?? null,
-    lr: rates[index] ?? null,
-    epoch: epochs[index] ?? null,
-    at: run.startedAt,
-  }));
-  appStore.set({ series: points.slice(-MAX_SERIES) });
 }
 
 export async function pauseRun(runId: string): Promise<void> {
   const result = await bridge.training.pause(runId);
   if (!result.ok) {
-    toastError((result.error as BackendError) ?? { message: String(result.error) }, "Could not pause");
+    toastError(result.error, "Could not pause the run");
     return;
   }
-  pushToast({
-    title: "Pausing",
-    message: "The trainer will checkpoint at the next step boundary and stop.",
-    tone: "info",
-  });
+  pushToast({ title: "Pausing", message: "The trainer finishes the current step, saves a checkpoint and stops.", tone: "info" });
 }
 
 export async function stopRun(runId: string): Promise<void> {
   const result = await bridge.training.stop(runId);
   if (!result.ok) {
-    toastError((result.error as BackendError) ?? { message: String(result.error) }, "Could not stop");
+    toastError(result.error, "Could not stop the run");
     return;
   }
-  pushToast({ title: "Stopping", message: "Checkpoints are saved before the run exits.", tone: "info" });
+  pushToast({ title: "Stopping", message: "Checkpoints are saved before the process exits.", tone: "info" });
 }
 
-export async function resumeRun(runId: string): Promise<void> {
+export async function resumeRun(runId: string): Promise<boolean> {
   setBusy("resume", true);
   try {
     const result = await bridge.training.resume(runId);
     if (!result.ok || !result.runId) {
-      toastError((result.error as BackendError) ?? { message: "Resume failed." }, "Could not resume");
-      return;
+      toastError(result.error, "Could not resume the run");
+      return false;
     }
     await refreshRuns();
-    appStore.set({ selectedRunId: result.runId, page: "training" });
+    appStore.set({ page: "training", selectedRunId: result.runId, selectedRun: result.record ?? null });
     await loadRunDetails(result.runId);
-    pushToast({ title: "Resuming from checkpoint", tone: "good" });
+    pushToast({ title: "Resuming from the last checkpoint", tone: "good" });
+    return true;
   } finally {
     setBusy("resume", false);
   }
@@ -1022,7 +1107,7 @@ export async function resumeRun(runId: string): Promise<void> {
 export async function deleteRun(runId: string): Promise<void> {
   const result = await bridge.training.deleteRun(runId);
   if (!result.ok) {
-    toastError((result.error as BackendError) ?? { message: "Delete failed." }, "Could not delete the run");
+    toastError(result.error, "Could not delete the run");
     return;
   }
   await refreshRuns();
@@ -1032,185 +1117,205 @@ export async function deleteRun(runId: string): Promise<void> {
   pushToast({ title: "Run deleted", tone: "info" });
 }
 
-export async function removeProject(id: string): Promise<void> {
-  const result = await bridge.projects.remove(id);
-  if (!result.ok) {
-    toastError((result.error as BackendError) ?? { message: "Delete failed." }, "Could not delete the project");
-    return;
-  }
-  await refreshProjects();
-  pushToast({ title: "Project deleted", message: "Its runs remain in history.", tone: "info" });
-}
-
-export async function openPath(target: string | null | undefined): Promise<void> {
-  if (!target) return;
-  const result = await bridge.shell.openPath(target);
-  if (!result.ok) toastError(result.error as BackendError, "Could not open the folder");
-}
-
-export async function revealPath(target: string | null | undefined): Promise<void> {
-  if (!target) return;
-  await bridge.shell.showItem(target);
-}
-
-/** Open a real URL in the user's browser. Nothing is loaded inside the app. */
-export async function openExternal(url: string): Promise<void> {
-  if (!url) return;
-  const result = await bridge.shell.openExternal(url);
-  if (!result.ok) toastError(result.error as BackendError, "Could not open the link");
-}
-
-/* -------------------------------------------------------------- playground */
+/* ------------------------------------------------------------- playground */
 
 export async function loadPlaygroundModel(modelDir: string, name: string): Promise<boolean> {
+  if (!isDesktop) return false;
   appStore.set((state) => ({
-    playground: { ...state.playground, loading: true, error: null, loaded: false, output: "", streamed: "" },
+    playground: {
+      ...state.playground,
+      loading: true,
+      loaded: false,
+      error: null,
+      streamed: "",
+      thinkingStreamed: "",
+      output: "",
+      thinking: "",
+    },
   }));
+
   const result = await bridge.inference.load(modelDir);
   if (!result.ok) {
+    const error = result.error ?? { message: "The model could not be loaded." };
     appStore.set((state) => ({
       playground: {
         ...state.playground,
         loading: false,
-        error: (result.error as BackendError) ?? { message: "Load failed." },
+        loaded: false,
         modelDir,
         modelName: name,
+        error,
       },
     }));
+    toastError(error, "Could not load the model");
     return false;
   }
+
   appStore.set((state) => ({
-    playground: { ...state.playground, loading: false, loaded: true, modelDir, modelName: name, error: null },
+    playground: {
+      ...state.playground,
+      loading: false,
+      loaded: true,
+      modelDir,
+      modelName: name,
+      error: null,
+    },
   }));
   pushToast({ title: "Model loaded", message: name, tone: "good" });
   return true;
 }
 
 export async function unloadPlaygroundModel(): Promise<void> {
-  await bridge.inference.unload();
+  if (isDesktop) await bridge.inference.unload();
   appStore.set((state) => ({
-    playground: { ...state.playground, loaded: false, loading: false, streamed: "", output: "" },
+    playground: {
+      ...state.playground,
+      loaded: false,
+      loading: false,
+      streamed: "",
+      thinkingStreamed: "",
+      output: "",
+      thinking: "",
+    },
   }));
 }
 
 export async function generateInPlayground(prompt: string, system: string): Promise<void> {
   const playground = appStore.get().playground;
-  if (!playground.loaded) {
-    pushToast({ title: "No model loaded", tone: "warn" });
+  if (!playground.loaded || !playground.modelDir) {
+    pushToast({ title: "Load a model first", tone: "warn" });
     return;
   }
-  if (!prompt.trim()) return;
+  if (!prompt.trim() || playground.generating) return;
 
   appStore.set((state) => ({
-    playground: { ...state.playground, generating: true, streamed: "", output: "", error: null },
+    playground: {
+      ...state.playground,
+      generating: true,
+      streamed: "",
+      thinkingStreamed: "",
+      output: "",
+      thinking: "",
+      error: null,
+    },
   }));
 
   const result = await bridge.inference.generate({
+    model_dir: playground.modelDir,
     prompt,
-    system: system || undefined,
+    system: system.trim() || undefined,
+    thinking: playground.params.thinking,
     max_new_tokens: playground.params.maxNewTokens,
     temperature: playground.params.temperature,
     top_p: playground.params.topP,
     repetition_penalty: playground.params.repetitionPenalty,
-    stream: true,
   });
 
   if (!result.ok) {
+    const error = result.error ?? { message: "Generation failed." };
     appStore.set((state) => ({
-      playground: {
-        ...state.playground,
-        generating: false,
-        error: (result.error as BackendError) ?? { message: "Generation failed." },
-      },
+      playground: { ...state.playground, generating: false, error },
     }));
-    toastError(result.error as BackendError, "Generation failed");
+    toastError(error, "Generation failed");
     return;
   }
 
-  const text = String(result.text ?? "");
-  const seconds = (result.seconds as number) ?? null;
-  const tps = (result.tokens_per_second as number) ?? null;
+  const text = result.result?.text ?? "";
+  const thinkingText = result.result?.thinking ?? "";
+  const seconds = result.result?.seconds ?? null;
+  const tokensPerSecond = result.result?.tokens_per_second ?? null;
   appStore.set((state) => ({
     playground: {
       ...state.playground,
       generating: false,
       output: text,
+      thinking: thinkingText,
       streamed: "",
-      history: [{ prompt, output: text, seconds, tokensPerSecond: tps }, ...state.playground.history].slice(0, 50),
+      thinkingStreamed: "",
+      history: [
+        { prompt, output: text, thinking: thinkingText, seconds, tokensPerSecond },
+        ...state.playground.history,
+      ].slice(0, 40),
     },
   }));
 }
 
 export function setPlaygroundParams(patch: Partial<PlaygroundState["params"]>): void {
-  appStore.set((state) => ({ playground: { ...state.playground, params: { ...state.playground.params, ...patch } } }));
+  appStore.set((state) => ({
+    playground: { ...state.playground, params: { ...state.playground.params, ...patch } },
+  }));
 }
 
 export function clearPlaygroundHistory(): void {
   appStore.set((state) => ({
-    playground: { ...state.playground, history: [], output: "", streamed: "" },
+    playground: { ...state.playground, history: [], output: "", streamed: "", thinking: "", thinkingStreamed: "" },
   }));
 }
 
-/* -------------------------------------------------- runtime installation */
+/* -------------------------------------------------------- runtime install */
 
-/** Install the ML runtime with the configured interpreter; progress is pushed on zeqou:runtime:install. */
 export async function installRuntime(): Promise<boolean> {
   if (!isDesktop) return false;
   if (appStore.get().runtimeInstall.running) return false;
-  appStore.set({ runtimeInstall: { running: true, phase: "started", lines: [], exitCode: null, error: null, venv: null } });
+
+  appStore.set({
+    runtimeInstall: { running: true, phase: "running", lines: [], exitCode: null, error: null, venv: null },
+  });
   setBusy("installRuntime", true);
   try {
     const result = await bridge.env.installRuntime();
     if (!result.ok) {
-      const error = (result.error as BackendError) ?? { message: "Installation failed." };
+      const message = result.error?.message ?? "The installation failed.";
       appStore.set((state) => ({
-        runtimeInstall: { ...state.runtimeInstall, running: false, phase: "failed", error: error.message },
+        runtimeInstall: { ...state.runtimeInstall, running: false, phase: "failed", error: message },
       }));
-      toastError(error, "Could not install the ML runtime");
+      toastError(result.error, "Could not install the ML runtime");
       return false;
     }
+    // The zeqou:runtime:install channel delivers the final phase; nothing to
+    // do here except report that the installer accepted the request.
     return true;
   } finally {
     setBusy("installRuntime", false);
   }
 }
 
-/* ------------------------------------------------------------- live events */
+/* ------------------------------------------------------------ live events */
 
 export function subscribeToEvents(): () => void {
   if (!isDesktop) return () => {};
 
-  const unsubscribers = [
-    bridge.on("zeqou:training:event", (payload: any) => {
-      const { detail, event } = payload as { runId: string; event: string; detail: Record<string, unknown> };
+  const unsubs = [
+    bridge.on("zeqou:training:event", (payload) => {
+      const { event, detail } = payload as { runId: string; event: string; detail: Record<string, unknown> };
+
       if (event === "training-progress") {
         const point: SeriesPoint = {
           step: Number(detail.step ?? 0),
           loss: detail.loss == null ? null : Number(detail.loss),
           lr: detail.learning_rate == null ? null : Number(detail.learning_rate),
           epoch: detail.epoch == null ? null : Number(detail.epoch),
-          at: Date.now(),
         };
         appStore.set((state) => ({
-          series: [...state.series, point]
-            .filter((entry, index, list) => index === 0 || entry.step !== list[index - 1].step)
-            .slice(-MAX_SERIES),
+          // Repeated steps can arrive after a resume; keep the newest.
+          series: [...state.series.filter((entry) => entry.step !== point.step), point]
+            .sort((a, b) => a.step - b.step)
+            .slice(-MAX_SERIES_POINTS),
         }));
         return;
       }
-      if (event === "training-status" && detail.phase === "warning") {
-        appendLog({
-          stream: "event",
-          level: "warn",
-          message: String(detail.message ?? ""),
-          event,
-          detail,
-        });
-      }
+
+      if (event === "dataset-progress") return; // surfaced through the wizard spinner instead
+      appendLog({
+        stream: "event",
+        level: event === "error" ? "error" : detail.level === "warn" ? "warn" : "info",
+        message: formatEventLog(event, detail),
+        event,
+      });
     }),
 
-    bridge.on("zeqou:training:log", (payload: any) => {
-      const { line } = payload as { line: string };
+    bridge.on("zeqou:training:log", (payload) => {
+      const { line } = payload as { runId: string; line: string };
       if (!line) return;
       appendLog({
         stream: "stderr",
@@ -1219,65 +1324,57 @@ export function subscribeToEvents(): () => void {
       });
     }),
 
-    bridge.on("zeqou:training:state", (payload: any) => {
-      const { record } = payload as { record: RunRecord };
-      const state = appStore.get();
-      if (record && state.selectedRunId === record.id) {
-        appStore.set({ selectedRun: record });
-      }
+    bridge.on("zeqou:training:state", (payload) => {
+      const { record } = payload as { runId: string; record: RunRecord };
       if (!record) return;
-      const runs = state.runs.map((run) => (run.id === record.id ? record : run));
-      if (!runs.some((run) => run.id === record.id)) runs.unshift(record);
-      appStore.set({ runs });
+      const state = appStore.get();
+      const runs = state.runs.some((run) => run.id === record.id)
+        ? state.runs.map((run) => (run.id === record.id ? { ...run, ...record } : run))
+        : [record, ...state.runs];
+      const patch: Partial<AppState> = { runs };
+      if (state.selectedRunId === record.id) {
+        patch.selectedRun = state.selectedRun ? { ...state.selectedRun, ...record } : record;
+      }
+      appStore.set(patch);
     }),
 
-    bridge.on("zeqou:training:finished", (payload: any) => {
-      const { record } = payload as { record: RunRecord };
+    bridge.on("zeqou:training:finished", (payload) => {
+      const { record } = payload as { runId: string; record: RunRecord };
       if (!record) return;
-      const tone = record.status === "failed" ? "bad" : "good";
+      const titles: Record<string, string> = {
+        completed: "Training completed",
+        failed: "Training failed",
+        stopped: "Training stopped",
+        paused: "Training paused",
+      };
       pushToast({
-        title:
-          record.status === "completed"
-            ? "Training completed"
-            : record.status === "failed"
-              ? "Training failed"
-              : record.status === "paused"
-                ? "Training paused"
-                : "Training stopped",
-        message: record.error?.message ?? `${record.name} · final loss ${record.finalLoss?.toFixed(4) ?? "—"}`,
-        tone,
+        title: titles[record.status] ?? "Training finished",
+        message: record.error?.message
+          ?? `${record.name} · final loss ${record.finalLoss != null ? record.finalLoss.toFixed(4) : "—"}`,
+        tone: record.status === "failed" ? "bad" : "good",
       });
       void (async () => {
-        await refreshRuns();
-        await refreshModels();
-        await refreshProjects();
+        await Promise.all([refreshRuns(), refreshModels(), refreshProjects()]);
         appStore.set({ page: "training" });
       })();
     }),
 
-    bridge.on("zeqou:gpu", (payload: any) => {
-      const { runId, sample } = payload as {
-        runId: string | null;
-        sample: { available: boolean; gpu?: Record<string, number | string> };
-      };
-      if (!sample || !sample.available || !sample.gpu) {
+    bridge.on("zeqou:gpu", (payload) => {
+      const { sample } = payload as { runId: string | null; sample: GpuSample };
+      if (!sample?.available || !sample.gpu) {
         appStore.set({ liveGpu: null });
         return;
       }
-      // During a run the main process samples every second (runId set); the
-      // always-on background sampler sends runId=null every few seconds. Both
-      // feed the same live point, so screens stay current outside of runs too.
-      if (runId) return;
       const point: GpuPoint = {
         at: Date.now(),
-        utilization: (sample.gpu.utilization_gpu as number) ?? null,
-        vramUsedMb: (sample.gpu.memory_used_mb as number) ?? null,
-        vramTotalMb: (sample.gpu.memory_total_mb as number) ?? null,
-        temperature: (sample.gpu.temperature_c as number) ?? null,
+        utilization: sample.gpu.utilization_gpu ?? null,
+        vramUsedMb: sample.gpu.memory_used_mb ?? null,
+        vramTotalMb: sample.gpu.memory_total_mb ?? null,
+        temperature: sample.gpu.temperature_c ?? null,
       };
       appStore.set((state) => ({
         liveGpu: point,
-        gpuSeries: [...state.gpuSeries, point].slice(-MAX_GPU),
+        gpuSeries: [...state.gpuSeries, point].slice(-MAX_GPU_POINTS),
       }));
     }),
 
@@ -1285,9 +1382,16 @@ export function subscribeToEvents(): () => void {
     bridge.on("zeqou:models:changed", () => void refreshModels()),
     bridge.on("zeqou:projects:changed", () => void refreshProjects()),
 
-    bridge.on("zeqou:runtime:install", (payload: any) => {
+    bridge.on("zeqou:settings:changed", (payload) => {
+      const { settings } = payload as { settings: Settings };
+      if (!settings) return;
+      appStore.set({ settings });
+      applyTheme(settings.theme);
+    }),
+
+    bridge.on("zeqou:runtime:install", (payload) => {
       const { phase, line, exitCode, message, venv } = payload as {
-        phase: "started" | "output" | "done" | "failed";
+        phase: "output" | "done" | "failed";
         line?: string;
         exitCode?: number;
         message?: string;
@@ -1295,46 +1399,88 @@ export function subscribeToEvents(): () => void {
       };
       appStore.set((state) => {
         const install = state.runtimeInstall;
-        if (phase === "started") {
-          return { runtimeInstall: { running: true, phase, lines: [], exitCode: null, error: null, venv: null } };
-        }
         if (phase === "output") {
-          return { runtimeInstall: { ...install, phase, lines: [...install.lines, String(line ?? "")].slice(-400) } };
+          return {
+            runtimeInstall: {
+              ...install,
+              running: true,
+              phase: "running",
+              lines: [...install.lines, String(line ?? "")].slice(-500),
+            },
+          };
         }
         if (phase === "done") {
-          return { runtimeInstall: { ...install, running: false, phase, exitCode: exitCode ?? 0, venv: venv ?? null } };
+          return {
+            runtimeInstall: { ...install, running: false, phase: "done", exitCode: exitCode ?? 0, venv: venv ?? null },
+          };
         }
-        return { runtimeInstall: { ...install, running: false, phase: "failed", exitCode: exitCode ?? null, error: message ?? null } };
+        return {
+          runtimeInstall: {
+            ...install,
+            running: false,
+            phase: "failed",
+            exitCode: exitCode ?? null,
+            error: message ?? "The installation failed.",
+          },
+        };
       });
+
       if (phase === "done") {
-        pushToast({
-          title: "ML runtime installed",
-          message: "The app environment is ready. Re-detecting…",
-          tone: "good",
-        });
+        pushToast({ title: "ML runtime installed", message: "The app environment is ready.", tone: "good" });
         void refreshEnv(true);
       }
       if (phase === "failed") {
-        pushToast({ title: "Installation failed", message: message ?? "pip reported an error — see the log.", tone: "bad" });
+        pushToast({ title: "Installation failed", message: message, tone: "bad" });
       }
     }),
-    bridge.on("zeqou:inference:token", (payload: any) => {
-      const { token } = payload as { token: string };
+
+    bridge.on("zeqou:inference:token", (payload) => {
+      const { token } = payload as { requestId: string; token: string };
+      if (!token) return;
       appStore.set((state) => ({
-        playground: { ...state.playground, streamed: state.playground.streamed + token, output: state.playground.streamed + token },
+        playground: {
+          ...state.playground,
+          streamed: state.playground.streamed + token,
+          output: state.playground.streamed + token,
+        },
       }));
     }),
-    bridge.on("zeqou:inference:state", (payload: any) => {
-      const loaded = (payload as { loaded: unknown }).loaded;
-      appStore.set((state) => ({ playground: { ...state.playground, loaded: Boolean(loaded) } }));
+
+    bridge.on("zeqou:inference:thinking", (payload) => {
+      const { token } = payload as { requestId: string; token: string };
+      if (!token) return;
+      appStore.set((state) => ({
+        playground: {
+          ...state.playground,
+          thinkingStreamed: state.playground.thinkingStreamed + token,
+          thinking: state.playground.thinkingStreamed + token,
+        },
+      }));
     }),
-    bridge.on("zeqou:inference:log", (payload: any) => {
+
+    bridge.on("zeqou:inference:state", (payload) => {
+      const { loaded } = payload as { loaded: { model_dir: string; mode: string } | null };
+      appStore.set((state) => ({
+        playground: {
+          ...state.playground,
+          loaded: Boolean(loaded),
+          mode: loaded?.mode ?? null,
+        },
+      }));
+    }),
+
+    bridge.on("zeqou:inference:log", (payload) => {
       const { line, level } = payload as { line: string; level: string };
-      if (line) appendLog({ stream: "stderr", level: level === "error" ? "error" : "info", message: `[inference] ${line}` });
+      if (!line) return;
+      appendLog({
+        stream: "stderr",
+        level: level === "error" ? "error" : "info",
+        message: `[inference] ${line}`,
+      });
     }),
   ];
 
-  return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  return () => unsubs.forEach((unsubscribe) => unsubscribe());
 }
 
 export function getState(): AppState {

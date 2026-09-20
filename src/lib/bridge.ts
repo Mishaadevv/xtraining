@@ -1,24 +1,33 @@
 /**
  * Access to the desktop bridge.
  *
- * When the renderer is opened in a plain browser (Vite dev server, or the
- * preview pane) every privileged call resolves with an explicit
- * `desktop_only` error instead of silently pretending to work. That keeps the
- * UI honest and still lets the interface be developed and inspected.
+ * When the renderer runs in a plain browser (Vite dev server, preview pane),
+ * every privileged call resolves with an explicit `desktop_only` error instead
+ * of pretending to work — the interface stays inspectable while the UI stays
+ * honest about what it can do.
  */
 import type {
+  AppInfo,
   BackendError,
+  BackendCapability,
+  CallResult,
+  DatasetEntry,
   DatasetReport,
   EnvSnapshot,
+  GpuSample,
   HardwareSnapshot,
   InstallPlan,
+  InterpreterCandidate,
   ModelEntry,
+  ModelExportInfo,
+  ModelInspectInfo,
   Project,
   RunRecord,
   Settings,
-  ValidationIssue,
+  TokenStorageInfo,
 } from "./types";
 
+/** The surface preload.js exposes on `window.zeqou`, before unwrapping. */
 interface RawBridge {
   platform: string;
   channels: string[];
@@ -45,7 +54,7 @@ interface RawBridge {
   env: {
     detect(options?: { force?: boolean }): Promise<Record<string, unknown>>;
     interpreters(options?: { force?: boolean }): Promise<Record<string, unknown>>;
-    setInterpreter(path: string | null): Promise<Record<string, unknown>>;
+    setInterpreter(executablePath: string | null): Promise<Record<string, unknown>>;
     installPlan(cudaTag?: string): Promise<Record<string, unknown>>;
     installRuntime(): Promise<Record<string, unknown>>;
     installStatus(): Promise<Record<string, unknown>>;
@@ -79,7 +88,7 @@ interface RawBridge {
     remove(id: string): Promise<Record<string, unknown>>;
   };
   training: {
-    autoConfig(payload: { baseline?: boolean } & Record<string, unknown>): Promise<Record<string, unknown>>;
+    autoConfig(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
     estimate(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
     check(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
     start(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -114,208 +123,200 @@ export const isDesktop = Boolean(raw);
 
 const DESKTOP_HINT = "Launch ZeqouXTraining with `npm run dev` to use this.";
 
-function desktopOnly(what: string): Promise<never> {
-  return Promise.resolve({
-    ok: false,
-    error: {
-      code: "desktop_only",
-      message: `${what} is available in the desktop app only.`,
-      hint: DESKTOP_HINT,
-    },
-  }) as never;
-}
-
-/** Uniform result shape used by every store action. */
-export interface CallResult {
-  ok: boolean;
-  error?: BackendError;
-  [key: string]: unknown;
-}
-
 function fail(message: string, code = "bridge"): CallResult {
   return { ok: false, error: { code, message, hint: DESKTOP_HINT } };
 }
 
-async function call<T extends CallResult>(fn: () => Promise<Record<string, unknown>>): Promise<T> {
+function desktopOnly(feature: string): CallResult {
+  return {
+    ok: false,
+    error: {
+      code: "desktop_only",
+      message: `${feature} is available in the desktop app only.`,
+      hint: DESKTOP_HINT,
+    },
+  };
+}
+
+/** Uniform wrapper: every handler resolves with a CallResult, never throws. */
+async function call(promise: Promise<Record<string, unknown>>): Promise<CallResult> {
   try {
-    const result = (await fn()) as unknown as T;
-    if (!result || typeof result !== "object") return fail("The desktop bridge returned no data.") as T;
+    const result = (await promise) as unknown as CallResult;
+    if (!result || typeof result !== "object") return fail("The desktop bridge returned no data.");
     return result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return fail(message) as T;
+    return fail(error instanceof Error ? error.message : String(error));
   }
 }
 
-/* ------------------------------------------------------------------ typed API */
-
-/** What the backend reported about a model folder, before exporting it. */
-export interface ModelExportInfo {
-  path: string;
-  name: string;
-  files: string[];
-  weight_files: string[];
-  is_adapter: boolean;
-  adapter_config: Record<string, unknown> | null;
-  base_model: string | null;
-  checkpoints: string[];
-  size_bytes: number;
-  modes: {
-    copy: { ready: boolean };
-    merge: { ready: boolean; applicable: boolean; missing: string[] };
-  };
-  blockers: { code: string; message: string; hint: string }[];
-}
-
-export interface AppInfo {
-  name: string;
-  version: string;
-  platform: string;
-  electron: string;
-  node: string;
-  chrome: string;
-  userData: string;
-  runsDir: string;
-  modelsDir: string;
-  hfCacheDir: string;
-  backendDir: string;
-  encryptionAvailable: boolean;
+/** Helpers for extracting typed fields from a CallResult. */
+export function field<T>(result: CallResult, key: string): T | null {
+  const value = result[key];
+  return value === undefined ? null : (value as T);
 }
 
 export const bridge = {
   isDesktop,
 
-  on(channel: string, handler: (payload: any) => void): () => void {
+  on(channel: string, handler: (payload: never) => void): () => void {
     if (!raw) return () => {};
-    return raw.on(channel, handler);
+    return raw.on(channel, handler as (payload: unknown) => void);
   },
 
   app: {
-    info: (): Promise<CallResult & { [k: string]: unknown }> =>
-      raw ? call(() => raw.app.info()) : (desktopOnly("App information") as never),
+    info: (): Promise<CallResult & { info?: AppInfo }> =>
+      raw ? call(raw.app.info()) : Promise.resolve(desktopOnly("App information")),
   },
 
   shell: {
-    openPath: (target: string) => (raw ? call(() => raw.shell.openPath(target)) : desktopOnly("Opening paths")),
+    openPath: (target: string) =>
+      raw ? call(raw.shell.openPath(target)) : Promise.resolve(desktopOnly("Opening paths")),
     openExternal: (url: string) =>
-      raw ? call(() => raw.shell.openExternal(url)) : desktopOnly("Opening links"),
+      raw ? call(raw.shell.openExternal(url)) : Promise.resolve(desktopOnly("Opening links")),
     showItem: (target: string) =>
-      raw ? call(() => raw.shell.showItem(target)) : desktopOnly("Revealing files"),
+      raw ? call(raw.shell.showItem(target)) : Promise.resolve(desktopOnly("Revealing files")),
   },
 
   dialogs: {
-    pickDataset: () => (raw ? call(() => raw.dialogs.pickDataset()) : desktopOnly("File pickers")),
+    pickDataset: () =>
+      raw ? call(raw.dialogs.pickDataset()) : Promise.resolve(desktopOnly("File pickers")),
     pickModelFolder: () =>
-      raw ? call(() => raw.dialogs.pickModelFolder()) : desktopOnly("Folder pickers"),
-    pickPython: () => (raw ? call(() => raw.dialogs.pickPython()) : desktopOnly("File pickers")),
+      raw ? call(raw.dialogs.pickModelFolder()) : Promise.resolve(desktopOnly("Folder pickers")),
+    pickPython: () =>
+      raw ? call(raw.dialogs.pickPython()) : Promise.resolve(desktopOnly("File pickers")),
     pickDirectory: (title?: string) =>
-      raw ? call(() => raw.dialogs.pickDirectory(title)) : desktopOnly("Folder pickers"),
+      raw ? call(raw.dialogs.pickDirectory(title)) : Promise.resolve(desktopOnly("Folder pickers")),
   },
 
   settings: {
     get: (): Promise<CallResult & { settings?: Settings }> =>
-      raw ? call(() => raw.settings.get()) : (desktopOnly("Settings") as never),
+      raw ? call(raw.settings.get()) : Promise.resolve(desktopOnly("Settings")),
     set: (patch: Partial<Settings>): Promise<CallResult & { settings?: Settings }> =>
-      raw ? call(() => raw.settings.set(patch)) : (desktopOnly("Settings") as never),
+      raw ? call(raw.settings.set(patch)) : Promise.resolve(desktopOnly("Settings")),
     reset: (): Promise<CallResult & { settings?: Settings }> =>
-      raw ? call(() => raw.settings.reset()) : (desktopOnly("Settings") as never),
-    setToken: (token: string | null) =>
-      raw ? call(() => raw.settings.setToken(token)) : desktopOnly("Storing tokens"),
-    tokenStatus: () =>
-      raw ? call(() => raw.settings.tokenStatus()) : desktopOnly("Token status"),
+      raw ? call(raw.settings.reset()) : Promise.resolve(desktopOnly("Settings")),
+    setToken: (token: string | null): Promise<CallResult & { storage?: TokenStorageInfo }> =>
+      raw ? call(raw.settings.setToken(token)) : Promise.resolve(desktopOnly("Storing tokens")),
+    tokenStatus: (): Promise<CallResult & { storage?: TokenStorageInfo; encryptionAvailable?: boolean }> =>
+      raw ? call(raw.settings.tokenStatus()) : Promise.resolve(desktopOnly("Token status")),
   },
 
   env: {
-    detect: (options?: { force?: boolean }): Promise<
-      CallResult & { [K in keyof EnvSnapshot]?: EnvSnapshot[K] } & { error?: BackendError }
-    > => (raw ? call(() => raw.env.detect(options)) : (desktopOnly("Environment detection") as never)),
-    interpreters: (options?: { force?: boolean }) =>
-      raw ? call(() => raw.env.interpreters(options)) : desktopOnly("Interpreter discovery"),
-    setInterpreter: (path: string | null) =>
-      raw ? call(() => raw.env.setInterpreter(path)) : desktopOnly("Interpreter selection"),
+    detect: (options?: { force?: boolean }): Promise<CallResult & Partial<EnvSnapshot>> =>
+      raw ? call(raw.env.detect(options)) : Promise.resolve(desktopOnly("Environment detection")),
+    interpreters: (options?: { force?: boolean }): Promise<CallResult & { interpreters?: InterpreterCandidate[]; active?: Record<string, unknown> }> =>
+      raw ? call(raw.env.interpreters(options)) : Promise.resolve(desktopOnly("Interpreter discovery")),
+    setInterpreter: (path: string | null): Promise<CallResult & { interpreterPath?: string | null }> =>
+      raw ? call(raw.env.setInterpreter(path)) : Promise.resolve(desktopOnly("Interpreter selection")),
     installPlan: (cudaTag?: string): Promise<CallResult & { plan?: InstallPlan }> =>
-      raw ? call(() => raw.env.installPlan(cudaTag)) : (desktopOnly("Install plans") as never),
-    installRuntime: () => (raw ? call(() => raw.env.installRuntime()) : desktopOnly("Runtime installation")),
-    installStatus: () => (raw ? call(() => raw.env.installStatus()) : desktopOnly("Runtime installation")),
-    backends: () => (raw ? call(() => raw.env.backends()) : desktopOnly("Backend detection")),
+      raw ? call(raw.env.installPlan(cudaTag)) : Promise.resolve(desktopOnly("Install plans")),
+    installRuntime: (): Promise<CallResult & { exitCode?: number; venv?: string; interpreter?: string }> =>
+      raw ? call(raw.env.installRuntime()) : Promise.resolve(desktopOnly("Runtime installation")),
+    installStatus: (): Promise<CallResult & { running?: boolean; venvExists?: boolean; venvPython?: string }> =>
+      raw ? call(raw.env.installStatus()) : Promise.resolve(desktopOnly("Runtime installation")),
+    backends: (): Promise<CallResult & { backends?: BackendCapability[] }> =>
+      raw ? call(raw.env.backends()) : Promise.resolve(desktopOnly("Backend detection")),
   },
 
   hardware: {
     detect: (): Promise<CallResult & { hardware?: HardwareSnapshot | null }> =>
-      raw ? call(() => raw.hardware.detect()) : (desktopOnly("Hardware detection") as never),
-    sample: () => (raw ? call(() => raw.hardware.sample()) : desktopOnly("GPU sampling")),
+      raw ? call(raw.hardware.detect()) : Promise.resolve(desktopOnly("Hardware detection")),
+    sample: (): Promise<CallResult & { sample?: GpuSample }> =>
+      raw ? call(raw.hardware.sample()) : Promise.resolve(desktopOnly("GPU sampling")),
   },
 
   datasets: {
-    list: () => (raw ? call(() => raw.datasets.list()) : desktopOnly("Datasets")),
-    import: (paths: string | string[]) =>
-      raw ? call(() => raw.datasets.import(paths)) : desktopOnly("Importing datasets"),
-    addHf: (payload: { id: string; split?: string }): Promise<CallResult & { dataset?: any }> =>
-      raw ? call(() => raw.datasets.addHf(payload)) : (desktopOnly("Adding Hub datasets") as never),
-    validate: (payload: Record<string, unknown>): Promise<
-      CallResult & { report?: DatasetReport; error?: BackendError }
-    > => (raw ? call(() => raw.datasets.validate(payload)) : (desktopOnly("Validating datasets") as never)),
-    preview: (payload: Record<string, unknown>) =>
-      raw ? call(() => raw.datasets.preview(payload)) : desktopOnly("Dataset preview"),
-    remove: (id: string) => (raw ? call(() => raw.datasets.remove(id)) : desktopOnly("Removing datasets")),
+    list: (): Promise<CallResult & { datasets?: DatasetEntry[] }> =>
+      raw ? call(raw.datasets.list()) : Promise.resolve(desktopOnly("Datasets")),
+    import: (paths: string | string[]): Promise<CallResult & { imported?: DatasetEntry[]; failed?: { path: string; error: BackendError }[] }> =>
+      raw ? call(raw.datasets.import(paths)) : Promise.resolve(desktopOnly("Importing datasets")),
+    addHf: (payload: { id: string; split?: string }): Promise<CallResult & { dataset?: DatasetEntry }> =>
+      raw ? call(raw.datasets.addHf(payload)) : Promise.resolve(desktopOnly("Adding Hub datasets")),
+    validate: (payload: Record<string, unknown>): Promise<CallResult & { report?: DatasetReport }> =>
+      raw ? call(raw.datasets.validate(payload)) : Promise.resolve(desktopOnly("Validating datasets")),
+    preview: (payload: Record<string, unknown>): Promise<CallResult & { samples?: string[] }> =>
+      raw ? call(raw.datasets.preview(payload)) : Promise.resolve(desktopOnly("Dataset preview")),
+    remove: (id: string): Promise<CallResult> =>
+      raw ? call(raw.datasets.remove(id)) : Promise.resolve(desktopOnly("Removing datasets")),
   },
 
   models: {
-    list: () => (raw ? call(() => raw.models.list()) : desktopOnly("Models")),
-    add: (source: string): Promise<CallResult & { model?: ModelEntry; info?: any }> =>
-      raw ? call(() => raw.models.add(source)) : (desktopOnly("Adding models") as never),
-    inspect: (source: string) =>
-      raw ? call(() => raw.models.inspect(source)) : desktopOnly("Inspecting models"),
+    list: (): Promise<CallResult & { models?: ModelEntry[] }> =>
+      raw ? call(raw.models.list()) : Promise.resolve(desktopOnly("Models")),
+    add: (source: string): Promise<CallResult & { model?: ModelEntry; info?: ModelInspectInfo }> =>
+      raw ? call(raw.models.add(source)) : Promise.resolve(desktopOnly("Adding models")),
+    inspect: (source: string): Promise<CallResult & { info?: ModelInspectInfo }> =>
+      raw ? call(raw.models.inspect(source)) : Promise.resolve(desktopOnly("Inspecting models")),
     exportInfo: (payload: { modelId: string }): Promise<CallResult & { info?: ModelExportInfo }> =>
-      raw ? call(() => raw.models.exportInfo(payload)) : (desktopOnly("Exporting models") as never),
-    export: (payload: { modelId: string; outputDir: string; merge?: boolean }): Promise<CallResult & { output_dir?: string }> =>
-      raw ? call(() => raw.models.export(payload)) : (desktopOnly("Exporting models") as never),
-    remove: (id: string) => (raw ? call(() => raw.models.remove(id)) : desktopOnly("Removing models")),
+      raw ? call(raw.models.exportInfo(payload)) : Promise.resolve(desktopOnly("Exporting models")),
+    export: (payload: { modelId: string; outputDir: string; merge?: boolean }): Promise<CallResult & { output_dir?: string; files?: string[]; mode?: string }> =>
+      raw ? call(raw.models.export(payload)) : Promise.resolve(desktopOnly("Exporting models")),
+    remove: (id: string): Promise<CallResult> =>
+      raw ? call(raw.models.remove(id)) : Promise.resolve(desktopOnly("Removing models")),
   },
 
   projects: {
     list: (): Promise<CallResult & { projects?: Project[] }> =>
-      raw ? call(() => raw.projects.list()) : (desktopOnly("Projects") as never),
-    get: (id: string) => (raw ? call(() => raw.projects.get(id)) : desktopOnly("Projects")),
+      raw ? call(raw.projects.list()) : Promise.resolve(desktopOnly("Projects")),
+    get: (id: string): Promise<CallResult & { project?: Project }> =>
+      raw ? call(raw.projects.get(id)) : Promise.resolve(desktopOnly("Projects")),
     create: (patch: Record<string, unknown>): Promise<CallResult & { project?: Project }> =>
-      raw ? call(() => raw.projects.create(patch)) : (desktopOnly("Projects") as never),
-    update: (id: string, patch: Record<string, unknown>) =>
-      raw ? call(() => raw.projects.update(id, patch)) : desktopOnly("Projects"),
-    remove: (id: string) => (raw ? call(() => raw.projects.remove(id)) : desktopOnly("Projects")),
+      raw ? call(raw.projects.create(patch)) : Promise.resolve(desktopOnly("Projects")),
+    update: (id: string, patch: Record<string, unknown>): Promise<CallResult & { project?: Project }> =>
+      raw ? call(raw.projects.update(id, patch)) : Promise.resolve(desktopOnly("Projects")),
+    remove: (id: string): Promise<CallResult> =>
+      raw ? call(raw.projects.remove(id)) : Promise.resolve(desktopOnly("Projects")),
   },
 
   training: {
-    autoConfig: (payload: Record<string, unknown>) =>
-      raw ? call(() => raw.training.autoConfig(payload)) : desktopOnly("Automatic configuration"),
-    estimate: (payload: Record<string, unknown>) =>
-      raw ? call(() => raw.training.estimate(payload)) : desktopOnly("VRAM estimation"),
-    check: (payload: Record<string, unknown>) =>
-      raw ? call(() => raw.training.check(payload)) : desktopOnly("Pre-flight checks"),
+    autoConfig: (payload: Record<string, unknown>): Promise<CallResult> =>
+      raw ? call(raw.training.autoConfig(payload)) : Promise.resolve(desktopOnly("Automatic configuration")),
+    estimate: (payload: Record<string, unknown>): Promise<CallResult & { estimate?: Record<string, unknown> }> =>
+      raw ? call(raw.training.estimate(payload)) : Promise.resolve(desktopOnly("VRAM estimation")),
+    check: (payload: Record<string, unknown>): Promise<CallResult> =>
+      raw ? call(raw.training.check(payload)) : Promise.resolve(desktopOnly("Pre-flight checks")),
     start: (payload: Record<string, unknown>): Promise<CallResult & { runId?: string; record?: RunRecord }> =>
-      raw ? call(() => raw.training.start(payload)) : (desktopOnly("Starting training") as never),
-    progress: (runId: string) => (raw ? call(() => raw.training.progress(runId)) : desktopOnly("Run progress")),
-    stop: (runId: string) => (raw ? call(() => raw.training.stop(runId)) : desktopOnly("Stopping runs")),
-    pause: (runId: string) => (raw ? call(() => raw.training.pause(runId)) : desktopOnly("Pausing runs")),
-    resume: (runId: string): Promise<CallResult & { runId?: string }> =>
-      raw ? call(() => raw.training.resume(runId)) : (desktopOnly("Resuming runs") as never),
+      raw ? call(raw.training.start(payload)) : Promise.resolve(desktopOnly("Starting training")),
+    progress: (runId: string): Promise<CallResult & { record?: RunRecord | null; live?: Record<string, unknown> | null }> =>
+      raw ? call(raw.training.progress(runId)) : Promise.resolve(desktopOnly("Run progress")),
+    stop: (runId: string): Promise<CallResult> =>
+      raw ? call(raw.training.stop(runId)) : Promise.resolve(desktopOnly("Stopping runs")),
+    pause: (runId: string): Promise<CallResult> =>
+      raw ? call(raw.training.pause(runId)) : Promise.resolve(desktopOnly("Pausing runs")),
+    resume: (runId: string): Promise<CallResult & { runId?: string; record?: RunRecord }> =>
+      raw ? call(raw.training.resume(runId)) : Promise.resolve(desktopOnly("Resuming runs")),
     runs: (limit?: number): Promise<CallResult & { runs?: RunRecord[] }> =>
-      raw ? call(() => raw.training.runs(limit)) : (desktopOnly("Run history") as never),
+      raw ? call(raw.training.runs(limit)) : Promise.resolve(desktopOnly("Run history")),
     run: (runId: string): Promise<CallResult & { run?: RunRecord }> =>
-      raw ? call(() => raw.training.run(runId)) : (desktopOnly("Run history") as never),
-    deleteRun: (runId: string) => (raw ? call(() => raw.training.deleteRun(runId)) : desktopOnly("Deleting runs")),
-    log: (runId: string, lines?: number) =>
-      raw ? call(() => raw.training.log(runId, lines)) : desktopOnly("Logs"),
-    checkpoints: (runDir: string) =>
-      raw ? call(() => raw.training.checkpoints(runDir)) : desktopOnly("Checkpoints"),
+      raw ? call(raw.training.run(runId)) : Promise.resolve(desktopOnly("Run history")),
+    deleteRun: (runId: string): Promise<CallResult> =>
+      raw ? call(raw.training.deleteRun(runId)) : Promise.resolve(desktopOnly("Deleting runs")),
+    log: (runId: string, lines?: number): Promise<CallResult & { events?: { event: string; detail: Record<string, unknown> }[]; stderr?: string[] }> =>
+      raw ? call(raw.training.log(runId, lines)) : Promise.resolve(desktopOnly("Logs")),
+    checkpoints: (runDir: string): Promise<CallResult & { checkpoints?: RunRecord["checkpoints"] }> =>
+      raw ? call(raw.training.checkpoints(runDir)) : Promise.resolve(desktopOnly("Checkpoints")),
   },
 
   inference: {
-    load: (modelDir: string) => (raw ? call(() => raw.inference.load(modelDir)) : desktopOnly("Loading models")),
-    generate: (payload: Record<string, unknown>) =>
-      raw ? call(() => raw.inference.generate(payload)) : desktopOnly("Running inference"),
-    unload: () => (raw ? call(() => raw.inference.unload()) : desktopOnly("Unloading models")),
-    status: () => (raw ? call(() => raw.inference.status()) : desktopOnly("Inference status")),
+    load: (modelDir: string): Promise<CallResult> =>
+      raw ? call(raw.inference.load(modelDir)) : Promise.resolve(desktopOnly("Loading models")),
+    generate: (payload: Record<string, unknown>): Promise<
+      CallResult & {
+        result?: {
+          text?: string;
+          thinking?: string;
+          thinking_tokens?: number;
+          seconds?: number;
+          tokens_per_second?: number;
+          prompt_tokens?: number;
+          output_tokens?: number;
+        };
+      }
+    > =>
+      raw ? call(raw.inference.generate(payload)) : Promise.resolve(desktopOnly("Running inference")),
+    unload: (): Promise<CallResult> =>
+      raw ? call(raw.inference.unload()) : Promise.resolve(desktopOnly("Unloading models")),
+    status: (): Promise<CallResult & { status?: { running?: boolean; loaded?: unknown } }> =>
+      raw ? call(raw.inference.status()) : Promise.resolve(desktopOnly("Inference status")),
   },
 };
-
-export type Issue = ValidationIssue;

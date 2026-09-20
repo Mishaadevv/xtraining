@@ -1,138 +1,88 @@
 # ZeqouXTraining
 
-Desktop application for training and fine-tuning AI models. Pick a model, point at a dataset, choose a method, press start — no YAML, no shell scripts, no guessing whether the run will fit in memory.
-
-Part of the [Zeqou ecosystem](https://mishaadevv.github.io/zeqou/).
-
-## Features
-
-- Import models from Hugging Face or a local folder, and inspect them before committing
-- Fine-tuning, LoRA, QLoRA and SFT through `transformers` + `peft`
-- **Any model can be fine-tuned**: a Hugging Face repo, someone else's local folder, or a model you trained here — a trained LoRA adapter is merged into its base weights and training continues from there
-- **Train from scratch**: build a small transformer (micro/tiny/small presets or a custom architecture) and train it on your dataset with no base model and no downloads
-- Datasets from JSON, JSONL, CSV, TXT, Parquet, a folder of shards, or the Hugging Face Hub
-- Dataset validation before a run: field mapping, duplicates, empty rows, over-length samples
-- Real GPU detection (`nvidia-smi` + `torch.cuda`), VRAM estimation and pre-flight warnings
-- Automatic parameter selection from the detected hardware, with the reason behind every value
-- Start, stop, pause, resume and continue from a checkpoint
-- Live loss and learning-rate charts, GPU/VRAM trace, logs and checkpoints
-- Export a trained adapter, or merge it into its base model
-- Test the finished model in the built-in playground
-- Simple mode for a first run, Advanced mode for full control
-- One-click ML runtime installation from Settings → Environment, with live pip output
-- Background refresh: runs, libraries and the environment snapshot stay current on their own; GPU telemetry is sampled even when nothing is training
-
-## Honest by design
-
-There are no fake progress bars, no invented GPU numbers and no buttons that do nothing. If something needs a package this machine does not have, the app says so in plain language and tells you how to fix it:
+A desktop studio for fine-tuning small language models — locally, with a real GPU/CPU
+pipeline and no cloud dependency. Electron shell, React interface, Python engine.
 
 ```
-$ python -m zeqouxtraining.cli env-check
-torch         not installed
-transformers  not installed
-peft          not installed
-GPU           no NVIDIA device found (nvidia-smi is not on PATH)
-training      unavailable — install the ML runtime in Settings → Environment
+┌────────────────────────────────────────────────────────────┐
+│  React renderer (Vite + TypeScript + Tailwind)             │
+│  pages · wizard · live charts · playground w/ Thinking     │
+├────────────────────────────────────────────────────────────┤
+│  Electron main (Node)                                      │
+│  preload bridge · IPC · job manager · registry · storage   │
+├────────────────────────────────────────────────────────────┤
+│  Python engine (zeqouxtraining)                            │
+│  CLI protocol · datasets · backends · trainer · inference  │
+└────────────────────────────────────────────────────────────┘
 ```
 
-The training runtime (`torch`, `transformers`, `peft`, `accelerate`) is not bundled: it is machine-specific and several gigabytes. Until it is installed, the backend refuses to start a run with `backend_unavailable` and lists what is missing, rather than producing a simulated result. Everything else — detection, dataset validation, model inspection, VRAM estimation, export — works without it.
+## What it does
 
-## Develop
+- **Projects** — every training run belongs to a project with its history, best loss
+  and recorded configuration.
+- **New training wizard** — pick a base model and a dataset, and the app derives a
+  complete configuration (batch size, precision, context length, optimizer, rank)
+  from the detected hardware, explaining every choice. Simple and Advanced modes.
+- **Datasets** — JSON, JSONL, CSV, TXT, Parquet, a folder of shards, or a Hugging Face
+  Hub id. Referenced in place, never copied. A built-in Zeqou set (default v2 with
+  thinking, plus dialogue, code, science and tech parts and language packs) ships
+  inside the app and stands selected until you pick your own — a first run needs no
+  import at all. Validation reports exactly what the model would learn from: field
+  mapping, duplicates, over-length records, role statistics and normalised previews.
+- **Training** — live loss/LR curves, GPU utilisation and VRAM telemetry sampled from
+  nvidia-smi, step metrics, ETA, event log, stdout/stderr, checkpoints with pause,
+  resume and retention. A LoRA adapter (or 4-bit QLoRA, full fine-tune, SFT, or a
+  from-scratch small GPT) is produced into the app model library.
+- **Models** — the library of base and trained models, with export to any folder
+  (copy, or a real merge of the adapter into the base model) and one-click
+  "test in playground".
+- **Playground** — load a trained or local model and talk to it with streaming output.
+  **Thinking mode** streams the model's private chain of thought into its own panel
+  before the answer, with adjustable sampling (temperature, top-p, repetition penalty).
+- **Hardware** — what the machine can actually do: NVIDIA GPUs from nvidia-smi,
+  the installed PyTorch build, its CUDA support, CPU and RAM.
+- **Settings** — interpreter selection, one-click ML runtime installation into an
+  isolated venv, Hugging Face token in the OS keychain, storage locations, theme.
+
+## Repository layout
+
+```
+electron/          main process: main.js, ipc.js, preload.js, lib/*
+src/               renderer: features/* pages, state, components, lib
+python/            the zeqouxtraining engine and its test suite
+scripts/           dev.mjs (vite+electron) and smoke.js (end-to-end)
+```
+
+The Python package speaks a line-delimited JSON protocol on stdout, so the Node side
+stays a thin supervisor and the ML logic stays testable in plain Python.
+
+## Development
 
 ```bash
 npm install
-npm run dev      # Vite dev server + Electron, both watched
+npm run dev            # vite dev server + electron shell
+npm run test:py        # python engine tests (206)
+npm run smoke          # end-to-end electron smoke suite (54)
+npm run verify         # typecheck + python tests + smoke
+npm run build          # typecheck + production renderer build
 ```
 
-On first launch the app looks for a Python interpreter (`python`, `python3`, `py -3.x`), verifies it can import the backend package, and reports what is missing. Install the ML runtime from **Settings → Environment** using the generated command.
+The renderer also runs standalone (`npm run dev:web`) for interface work: every
+privileged call then resolves with an explicit `desktop_only` result instead of
+pretending to work.
 
-```bash
-npm run test:py    # 199 backend tests, standard library only
-npm run smoke      # 54 end-to-end checks inside a real Electron main process
-npm run verify     # typecheck + both of the above
-```
+## Installers
 
-`npm run smoke` is not a mock harness: it boots the actual Electron main process, spawns the actual Python backend, imports real dataset fixtures, validates a malformed file, registers a Hub dataset, exercises the job manager and exports a real artefact folder. It points the app at a throwaway temp directory, so your real library is never touched.
+Windows builds ship an assisted NSIS installer and a portable executable. The
+installer shows the PolyForm Strict 1.0.0 license before copying anything and
+lets you choose the installation folder; the portable build needs no install.
 
-## Build
+## Thinking mode
 
-```bash
-npm run pack     # unpacked build in release/
-npm run dist     # Windows installer (NSIS) + portable
-```
-
-Tagging `v*` runs the cross-platform workflow, which builds Windows, Linux and macOS in parallel and attaches them to the release.
-
-## Architecture
-
-```
-Electron main process ──┐
-  lib/paths.js          │ userData layout
-  lib/store.js          │ atomic JSON stores, OS-encrypted secrets
-  lib/hardware.js       │ nvidia-smi sampling, CPU/RAM snapshot
-  lib/python.js         │ interpreter discovery + JSON protocol client
-  lib/jobs.js           │ run lifecycle, logs, GPU series, checkpoints
-  lib/registry.js       │ datasets, models, projects
-  lib/exporter.js       │ export orchestration + provenance
-  lib/inference.js      │ long-lived inference runtime
-  ipc.js                │ one error shape across the bridge
-                        │
-                        ▼
-                    Python backend (python/zeqouxtraining/)
-                      events.py      newline-delimited JSON protocol
-                      deps.py        installed packages + install plan
-                      hardware.py    nvidia-smi and torch.cuda truth
-                      datasets.py    load, auto-map, normalise, validate
-                      models.py      resolve + inspect local/Hub models
-                      config.py      defaults, validation, auto-tuning
-                      estimator.py   VRAM estimate
-                      checkpoints.py list / resume / prune
-                      exporter.py    copy or merge an artefact
-                      errors.py      exception → message + hint
-                      trainer.py     job runner
-                      inference.py   streaming generation
-                      backends/      pluggable training backends
-```
-
-The Python side is a child process, not a library, so a crash in training can never take the UI down. It speaks one event per line on **stdout**:
-
-```json
-{"event": "training-progress", "detail": {"step": 42, "loss": 1.284, "total_steps": 300}}
-```
-
-Everything else — including anything a third-party library prints — goes to **stderr** and is shown verbatim in the technical log panel. Errors cross the boundary as data: `{code, message, hint, traceback}`. The UI shows the sentence and the hint; the traceback is one click away.
-
-A training backend subclasses `TrainingBackend` (`backends/base.py`), declares the packages it requires, and registers itself in `backends/registry.py`. The runner, the protocol and the whole UI stay unchanged — that is how Unsloth, TRL, a remote cluster or an ONNX runtime would be added.
-
-## Using it
-
-```
-Model → Dataset → Method → Settings → Check → Train → Result
-```
-
-**Simple** shows the four settings that decide whether a run succeeds — epochs, batch size, learning rate and context length. **Advanced** adds gradient accumulation, warmup, weight decay, the checkpoint interval and retention, evaluation split, seed, LoRA rank/alpha/dropout/target modules, quantization, precision, scheduler and optimizer.
-
-Turn **Configure parameters automatically** off in Settings → Advanced and the wizard hands you the documented defaults instead of values derived from your machine — and says so, rather than dressing them up as hardware-tuned.
-
-The **Check** step aggregates every blocker — missing runtime, dataset errors, an estimate that exceeds VRAM, a method the hardware cannot run — before you press start.
-
-Stop and pause are cooperative: the app writes a flag file, the trainer notices at the next step boundary, checkpoints, and exits cleanly. That is why a paused run can be resumed later, from its last checkpoint.
-
-## Data and privacy
-
-Everything user-generated lives in Electron's `userData` directory:
-
-```
-settings.json  secrets.json  datasets.json  models.json  projects.json  runs.json
-runs/<runId>/     job.json, training.log, stderr.log, checkpoints, weights
-models/           models trained by this app
-cache/huggingface downloaded base models
-```
-
-Imported datasets are **referenced, never copied**. The Hugging Face token is encrypted through the OS keychain when available, and stored with an explicit `insecure: true` marker when it is not.
-
-Context isolation on, node integration off, sandbox on, permissions denied by default, navigation refused, new windows blocked. The renderer can only reach the main process through the named preload bridge.
-
-## License
-
-[PolyForm Strict 1.0.0](LICENSE) — viewing and personal use are allowed; copying, modification, redistribution and derivative works are not permitted without the author's permission.
+In the Playground, enable **Thinking mode**. The generation request carries
+`thinking: true`; the engine keeps everything between `<think>` and `</think>`
+out of the answer, streams it on a separate event channel, and reports it in the
+result as `thinking` alongside token statistics. The interface shows it in a
+collapsible panel above the answer and keeps it in session history. Models that
+were never trained to reason simply return an empty thinking block, so the toggle
+is always safe.

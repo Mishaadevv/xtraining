@@ -10,7 +10,6 @@
  * of an anonymous pile of weights.
  */
 const fs = require("node:fs");
-const path = require("node:path");
 
 const python = require("./python");
 const { models: modelsStore, runs: runsStore } = require("./store");

@@ -11,23 +11,23 @@ import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ Button */
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "quiet";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
-const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
+const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--text)] text-[var(--bg)] hover:opacity-90 active:opacity-80 border border-transparent",
+    "bg-[var(--text)] text-[var(--bg)] border border-transparent hover:opacity-90 active:opacity-80",
   secondary:
     "bg-[var(--panel-2)] text-[var(--text)] border border-[var(--border)] hover:bg-[var(--hover)]",
   ghost:
-    "bg-transparent text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--hover)] border border-transparent",
+    "bg-transparent text-[var(--text-2)] border border-transparent hover:text-[var(--text)] hover:bg-[var(--hover)]",
   quiet:
-    "bg-transparent text-[var(--text-2)] hover:text-[var(--text)] border border-[var(--border)] hover:border-[var(--text-3)]",
+    "bg-transparent text-[var(--text-2)] border border-[var(--border)] hover:border-[var(--border-strong)] hover:text-[var(--text)]",
   danger:
     "bg-transparent text-[var(--red)] border border-[rgba(224,108,117,0.4)] hover:bg-[rgba(224,108,117,0.12)]",
 };
 
-const BUTTON_SIZES: Record<ButtonSize, string> = {
+const SIZES: Record<ButtonSize, string> = {
   sm: "h-7 px-2.5 text-[12px] gap-1.5 rounded-[8px]",
   md: "h-9 px-3.5 text-[13px] gap-2 rounded-[10px]",
   lg: "h-11 px-5 text-[14px] gap-2 rounded-[12px]",
@@ -36,6 +36,8 @@ const BUTTON_SIZES: Record<ButtonSize, string> = {
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  busy?: boolean;
+  /** Alias of `busy` — reads better at call sites. */
   loading?: boolean;
   icon?: ReactNode;
 }
@@ -43,7 +45,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({
   variant = "secondary",
   size = "md",
-  loading = false,
+  busy = false,
+  loading,
   icon,
   className,
   children,
@@ -53,19 +56,19 @@ export function Button({
   return (
     <button
       type="button"
-      disabled={disabled || loading}
+      disabled={disabled || busy || loading}
       className={cn(
-        "inline-flex select-none items-center justify-center font-medium whitespace-nowrap",
+        "inline-flex select-none items-center justify-center whitespace-nowrap font-medium",
         "transition-all duration-[130ms] ease-[cubic-bezier(0.2,0.7,0.25,1)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acc-soft)]",
-        BUTTON_SIZES[size],
-        BUTTON_VARIANTS[variant],
+        SIZES[size],
+        VARIANTS[variant],
         className,
       )}
       {...rest}
     >
-      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
+      {busy || loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
       {children}
     </button>
   );
@@ -101,11 +104,11 @@ type BadgeTone = "neutral" | "good" | "warn" | "bad" | "accent" | "info";
 
 const BADGE_TONES: Record<BadgeTone, string> = {
   neutral: "text-[var(--text-2)] border-[var(--border)]",
-  good: "text-[var(--green)] border-[rgba(95,191,143,0.35)]",
-  warn: "text-[var(--amber)] border-[rgba(217,164,91,0.35)]",
-  bad: "text-[var(--red)] border-[rgba(224,108,117,0.35)]",
+  good: "text-[var(--green)] border-[rgba(95,191,143,0.4)]",
+  warn: "text-[var(--amber)] border-[rgba(217,164,91,0.4)]",
+  bad: "text-[var(--red)] border-[rgba(224,108,117,0.4)]",
   accent: "text-[var(--acc)] border-[var(--acc-soft)]",
-  info: "text-[var(--blue)] border-[rgba(122,165,248,0.35)]",
+  info: "text-[var(--blue)] border-[rgba(122,165,248,0.4)]",
 };
 
 export function Badge({
@@ -131,7 +134,11 @@ export function Badge({
   );
 }
 
-export function Dot({ tone = "neutral" }: { tone?: "good" | "warn" | "bad" | "neutral" | "accent" }) {
+export function Dot({
+  tone = "neutral",
+}: {
+  tone?: "good" | "warn" | "bad" | "neutral" | "accent";
+}) {
   const colors: Record<string, string> = {
     good: "bg-[var(--green)]",
     warn: "bg-[var(--amber)]",
@@ -142,7 +149,7 @@ export function Dot({ tone = "neutral" }: { tone?: "good" | "warn" | "bad" | "ne
   return <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", colors[tone])} />;
 }
 
-/* -------------------------------------------------------------------- Card */
+/* ------------------------------------------------------------------ Panels */
 
 export function Panel({
   className,
@@ -182,7 +189,7 @@ export function PanelHeader({
   return (
     <header className={cn("mb-3 flex items-start justify-between gap-3", className)}>
       <div className="flex min-w-0 items-start gap-2.5">
-        {icon ? <span className="mt-[2px] text-[var(--text-3)]">{icon}</span> : null}
+        {icon ? <span className="mt-[2px] shrink-0 text-[var(--text-3)]">{icon}</span> : null}
         <div className="min-w-0">
           <h3 className="truncate text-[13px] font-semibold leading-5">{title}</h3>
           {description ? (
@@ -200,15 +207,15 @@ export function PanelHeader({
 export function Field({
   label,
   hint,
+  aside,
   children,
   className,
-  aside,
 }: {
   label: ReactNode;
   hint?: ReactNode;
+  aside?: ReactNode;
   children: ReactNode;
   className?: string;
-  aside?: ReactNode;
 }) {
   return (
     <label className={cn("block", className)}>
@@ -217,7 +224,9 @@ export function Field({
         {aside}
       </span>
       {children}
-      {hint ? <span className="mt-1 block text-[11px] leading-4 text-[var(--text-3)]">{hint}</span> : null}
+      {hint ? (
+        <span className="mt-1 block text-[11px] leading-4 text-[var(--text-3)]">{hint}</span>
+      ) : null}
     </label>
   );
 }
@@ -227,7 +236,7 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
 }
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn("zq-input resize-none leading-[1.6]", className)} {...rest} />;
+  return <textarea className={cn("zq-input", className)} {...rest} />;
 }
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -268,7 +277,7 @@ export function Switch({
       >
         <span
           className={cn(
-            "absolute top-[2px] h-[12px] w-[12px] rounded-full transition-all duration-200 ease-[cubic-bezier(0.3,1.2,0.3,1)]",
+            "absolute top-[2px] h-[12px] w-[12px] rounded-full transition-all duration-200 ease-[var(--spring)]",
             checked ? "left-[16px] bg-[var(--acc)]" : "left-[2px] bg-[var(--text-3)]",
           )}
         />
@@ -285,7 +294,7 @@ export function Switch({
   );
 }
 
-/* -------------------------------------------------------------- Segmented */
+/* --------------------------------------------------------------- Segmented */
 
 export function Segmented<T extends string>({
   value,
@@ -302,11 +311,11 @@ export function Segmented<T extends string>({
 }) {
   return (
     <div
+      role="tablist"
       className={cn(
         "inline-flex items-center gap-0.5 rounded-[10px] border border-[var(--border-soft)] bg-[var(--panel-2)] p-0.5",
         className,
       )}
-      role="tablist"
     >
       {options.map((option) => {
         const active = option.value === value;
@@ -334,7 +343,7 @@ export function Segmented<T extends string>({
   );
 }
 
-/* --------------------------------------------------------------- Progress */
+/* ---------------------------------------------------------------- Progress */
 
 export function ProgressBar({
   value,
@@ -353,19 +362,19 @@ export function ProgressBar({
     warn: "bg-[var(--amber)]",
     bad: "bg-[var(--red)]",
   };
-  const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  const bounded = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   return (
     <div
-      className={cn("w-full overflow-hidden rounded-full bg-[var(--panel-2)]", className)}
-      style={{ height }}
       role="progressbar"
-      aria-valuenow={Math.round(clamped)}
+      aria-valuenow={Math.round(bounded)}
       aria-valuemin={0}
       aria-valuemax={100}
+      className={cn("w-full overflow-hidden rounded-full bg-[var(--panel-2)]", className)}
+      style={{ height }}
     >
       <div
         className={cn("h-full rounded-full transition-[width] duration-[400ms] ease-out", colors[tone])}
-        style={{ width: `${clamped}%` }}
+        style={{ width: `${bounded}%` }}
       />
     </div>
   );
@@ -398,7 +407,9 @@ export function Stat({
             : "";
   return (
     <div className="min-w-0">
-      <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">{label}</div>
+      <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">
+        {label}
+      </div>
       <div className={cn("mt-0.5 truncate text-[15px] font-semibold leading-6", mono && "zq-mono", toneClass)}>
         {value}
       </div>
@@ -407,7 +418,7 @@ export function Stat({
   );
 }
 
-/* ------------------------------------------------------------- EmptyState */
+/* -------------------------------------------------------------- EmptyState */
 
 export function EmptyState({
   icon,
@@ -433,27 +444,29 @@ export function EmptyState({
       {icon ? <div className="mb-3 text-[var(--text-3)]">{icon}</div> : null}
       <p className="text-[13.5px] font-medium">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-[48ch] text-[12.5px] leading-[19px] text-[var(--text-2)]">{description}</p>
+        <p className="mt-1 max-w-[52ch] text-[12.5px] leading-[19px] text-[var(--text-2)]">
+          {description}
+        </p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------- Note */
+/* -------------------------------------------------------------------- Note */
 
 export function Note({
   tone = "info",
   title,
   children,
-  className,
   actions,
+  className,
 }: {
   tone?: "info" | "good" | "warn" | "bad";
   title?: ReactNode;
   children?: ReactNode;
-  className?: string;
   actions?: ReactNode;
+  className?: string;
 }) {
   const map = {
     info: { color: "var(--blue)", icon: <Info className="h-3.5 w-3.5" /> },
@@ -486,7 +499,7 @@ export function Note({
   );
 }
 
-/* ------------------------------------------------------------------ Misc */
+/* -------------------------------------------------------------------- Misc */
 
 export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cn("h-3.5 w-3.5 animate-spin text-[var(--text-3)]", className)} />;
@@ -506,7 +519,13 @@ export function KeyValue({
   className?: string;
 }) {
   const toneClass =
-    tone === "good" ? "text-[var(--green)]" : tone === "warn" ? "text-[var(--amber)]" : tone === "bad" ? "text-[var(--red)]" : "";
+    tone === "good"
+      ? "text-[var(--green)]"
+      : tone === "warn"
+        ? "text-[var(--amber)]"
+        : tone === "bad"
+          ? "text-[var(--red)]"
+          : "";
   return (
     <div className={cn("flex items-baseline justify-between gap-3 py-[5px]", className)}>
       <span className="shrink-0 text-[12px] text-[var(--text-3)]">{label}</span>
