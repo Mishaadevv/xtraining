@@ -67,28 +67,52 @@ python -m pip install -r requirements.txt
 
 ## Dataset sources
 
-`validate-dataset` and `preview-dataset` accept a local path **or** a Hub id:
+`validate-dataset`, `preview-dataset` and `export-dataset` accept a local file, a
+folder of shards, or a Hub id:
 
 ```bash
+python -m zeqouxtraining.cli dataset-formats          # every type this install can read
 python -m zeqouxtraining.cli validate-dataset --path my_data.jsonl --context-length 512
+python -m zeqouxtraining.cli validate-dataset --path ./shards --context-length 512
 python -m zeqouxtraining.cli validate-dataset --hf-id tatsu-lab/alpaca --split train
 ```
 
-Hub ids need the optional `datasets` package; without it the command returns a
-`missing_dependency` result naming the package, rather than guessing.
+Readable types: JSON, JSONL/NDJSON, CSV, PSV, TSV/TAB, TXT/Markdown, Parquet,
+Arrow/Feather, ORC, SQLite databases (the largest table is read), Excel workbooks
+and YAML — plus `gzip`, `bz2` and `xz` compressed variants of the text formats
+(`shard-01.jsonl.gz`). Format detection is by extension and never guessed from
+content, so a file that cannot be read says exactly why. Readers that need a
+package (pyarrow, openpyxl, pyyaml, the Hub `datasets`) report
+`missing_dependency` with the `pip install` line instead of failing obscurely.
 
-## Exporting
+## Exporting a dataset as one file
+
+```bash
+python -m zeqouxtraining.cli export-dataset --path ./shards --output all.jsonl
+python -m zeqouxtraining.cli export-dataset --path ./data.db --output all.csv --raw
+python -m zeqouxtraining.cli export-dataset --hf-id tatsu-lab/alpaca --output alpaca.jsonl
+```
+
+Exactly one file is written — a shard folder, a database or a Hub dataset all
+become a single file (JSONL, JSON, CSV, TSV, TXT or Parquet). By default the rows
+are the *normalised* samples the trainer would see; `--raw` keeps the original
+records instead. An existing file is never overwritten unless `--overwrite` is
+given.
+
+## Exporting a trained artefact
 
 ```bash
 python -m zeqouxtraining.cli export --source runs/my-run --describe
 python -m zeqouxtraining.cli export --source runs/my-run --output D:/exports/my-run
+python -m zeqouxtraining.cli export --source runs/my-run --output D:/exports/my-run.zip --pack
 python -m zeqouxtraining.cli export --source runs/my-run --output D:/exports/merged --merge
 ```
 
-Copy mode writes the adapter plus a generated `README.md` and `export.json`.
-`--merge` folds the adapter into its base model and therefore genuinely needs
-torch + peft; without them the command fails with `missing_dependency` instead of
-writing a folder that would not load.
+Copy mode writes the adapter plus a generated `README.md` and `export.json`;
+`--pack` writes that same export into one single `.zip` file. `--merge` folds the
+adapter into its base model and therefore genuinely needs torch + peft; without
+them the command fails with `missing_dependency` instead of writing a folder that
+would not load.
 
 ## Running without the app
 

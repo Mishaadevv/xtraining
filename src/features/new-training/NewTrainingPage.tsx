@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Brain,
   CheckCircle2,
+  Cloud,
   Database,
   Gauge,
   Play,
@@ -208,13 +209,8 @@ export function NewTrainingPage() {
     }
   }, [wizard.step, config, wizard.baseModel, wizard.datasetId]);
 
-  // The built-in default dataset stands selected until the user picks their
-  // own — quietly, without spawning the Python backend before they ask.
-  useEffect(() => {
-    if (wizard.datasetId) return;
-    const fallback = datasets.find((dataset) => dataset.builtin && dataset.default);
-    if (fallback) void wizardSelectDataset(fallback.id, { validate: false });
-  }, [datasets, wizard.datasetId]);
+  // Nothing is preselected: the app ships no datasets, so a run always uses a
+  // dataset the user actually chose.
 
   const blockers = useMemo(() => {
     const list: { title: string; detail: string; tone: "warn" | "bad" }[] = [];
@@ -230,13 +226,12 @@ export function NewTrainingPage() {
       list.push({ title: "No base model selected", detail: "Pick a model in step 1.", tone: "bad" });
     }
     if (!datasetPath) {
-      const fallback = datasets.find((dataset) => dataset.builtin && dataset.default);
       list.push({
         title: "No dataset selected",
-        detail: fallback
-          ? `The built-in default “${fallback.name}” will be used.`
-          : "Import a dataset or pick a built-in one in step 2.",
-        tone: fallback ? "warn" : "bad",
+        detail: datasets.length
+          ? "Pick one in step 2 — training needs the data it should learn from."
+          : "The library is empty: scan your dataset folder or import a file, then pick it in step 2.",
+        tone: "bad",
       });
     }
     if (wizard.datasetReport && wizard.datasetReport.status === "errors") {
@@ -512,7 +507,7 @@ export function NewTrainingPage() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-[12.5px] font-medium">{dataset.name}</span>
                         <span className="flex shrink-0 items-center gap-2">
-                          {dataset.builtin ? <Badge tone="info">built-in</Badge> : null}
+                          {dataset.origin === "folder" ? <Badge tone="info">scanned</Badge> : null}
                           <Badge tone={statusTone}>
                             <Dot tone={statusTone} />
                             {dataset.status}
@@ -555,35 +550,64 @@ export function NewTrainingPage() {
               </div>
             ) : null}
 
-            <div className="mt-3 border-t border-[var(--border-soft)] pt-3">
-              <Field
-                label="Or add a dataset from the Hugging Face Hub"
-                aside={<span className="text-[11px] text-[var(--text-3)]">rows are fetched when you validate or train</span>}
-                hint="A Hub id looks like owner/name. Change the split only if the rows you want are not in `train`."
-              >
-                <div className="flex items-center gap-2">
+            {/*
+             * Dataset from the Hub. The fields sit in fixed-width wrappers on
+             * purpose: a bare width utility on a `.zq-input` used to be
+             * discarded, and the split field then stretched across the row.
+             */}
+            <div className="mt-3 rounded-[12px] border border-[var(--border-soft)] bg-[var(--panel-2)] p-3">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <span className="mt-[1px] grid h-7 w-7 shrink-0 place-items-center rounded-[9px] border border-[var(--border)] text-[var(--text-3)]">
+                  <Cloud className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium text-[var(--text-2)]">
+                    Add a dataset from the Hugging Face Hub
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-3)]">
+                    Rows are fetched when you validate or train — nothing is downloaded before that.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-2.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
                   <Input
                     value={hfId}
                     onChange={(event) => setHfId(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && hfId.trim()) void addHubDataset();
                     }}
-                    placeholder="tatsu-lab/alpaca"
+                    placeholder="owner/name — e.g. tatsu-lab/alpaca"
                     spellCheck={false}
+                    aria-label="Hub dataset id"
                   />
+                </div>
+                <div className="w-[132px] shrink-0">
                   <Input
-                    className="w-[104px] shrink-0"
                     value={hfSplit}
                     onChange={(event) => setHfSplit(event.target.value)}
-                    placeholder="train"
+                    placeholder="split"
                     spellCheck={false}
-                    aria-label="Split"
+                    aria-label="Hub split"
                   />
-                  <Button size="sm" variant="primary" loading={busy.importDataset} disabled={!hfId.trim()} onClick={() => void addHubDataset()}>
-                    Add
-                  </Button>
                 </div>
-              </Field>
+                <Button
+                  size="md"
+                  variant="primary"
+                  className="shrink-0"
+                  loading={busy.importDataset}
+                  disabled={!hfId.trim()}
+                  onClick={() => void addHubDataset()}
+                >
+                  Add
+                </Button>
+              </div>
+
+              <p className="mt-1.5 text-[11px] leading-4 text-[var(--text-3)]">
+                A Hub id looks like <span className="zq-mono">owner/name</span>. Change the split only if the rows
+                you want are not in <span className="zq-mono">train</span>.
+              </p>
             </div>
           </Panel>
         ) : null}

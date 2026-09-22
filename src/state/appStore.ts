@@ -6,7 +6,7 @@
  * has exactly one place to look at.
  */
 import { bridge, isDesktop } from "@/lib/bridge";
-import { basename } from "@/lib/utils";
+import { basename, formatCount } from "@/lib/utils";
 import { Store } from "@/state/store";
 import type {
   AppInfo,
@@ -15,6 +15,7 @@ import type {
   GpuSample,
   InterpreterCandidate,
   DatasetEntry,
+  DatasetFormats,
   DatasetReport,
   DatasetSelection,
   EnvSnapshot,
@@ -123,6 +124,12 @@ export interface AppState {
   settings: Settings | null;
   projects: Project[];
   datasets: DatasetEntry[];
+  /** Scanned datasets the user removed from the list (restorable, not deleted). */
+  hiddenDatasets: DatasetEntry[];
+  /** The folder the app scans for datasets. */
+  datasetFolder: string | null;
+  /** Which dataset types this install can read, straight from the backend. */
+  datasetFormats: DatasetFormats | null;
   models: ModelEntry[];
   runs: RunRecord[];
   selectedRunId: string | null;
@@ -198,6 +205,9 @@ const initialState: AppState = {
   settings: null,
   projects: [],
   datasets: [],
+  hiddenDatasets: [],
+  datasetFolder: null,
+  datasetFormats: null,
   models: [],
   runs: [],
   selectedRunId: null,
@@ -334,6 +344,10 @@ export async function bootstrap(): Promise<void> {
 
   await Promise.all([refreshEnv(), refreshProjects(), refreshDatasets(), refreshModels(), refreshRuns()]);
   appStore.set({ booted: true });
+  // Index the dataset folder in the background: a dataset the user drops in
+  // should simply be there, without an import step.
+  void scanDatasets({ quiet: true });
+  void refreshDatasetFormats();
 
   // Re-attach to a run that is still going (app restarted mid-training).
   const live = appStore.get().runs.find((run) => run.status === "running" || run.status === "starting");
@@ -485,7 +499,131 @@ export async function refreshProjects(): Promise<void> {
 export async function refreshDatasets(): Promise<void> {
   if (!isDesktop) return;
   const result = await bridge.datasets.list();
-  if (result.ok && result.datasets) appStore.set({ datasets: result.datasets });
+  if (!result.ok) return;
+  appStore.set({
+    datasets: result.datasets ?? [],
+    hiddenDatasets: result.hidden ?? [],
+    datasetFolder: result.folder ?? null,
+  });
+}
+
+/** What the backend can read — shown in the Datasets screen. */
+export async function refreshDatasetFormats(): Promise<void> {
+  if (!isDesktop) return;
+  const result = await bridge.datasets.formats();
+  if (result.ok && result.formats) appStore.set({ datasetFormats: result as DatasetFormats });
+}
+
+/**
+ * Index the dataset folder. This is what makes "I put my files in the folder"
+ * work: nothing has to be imported by hand when the folder is scanned.
+ */
+export async function scanDatasets(options: { quiet?: boolean } = {}): Promise<void> {
+  setBusy("scanDatasets", true);
+  try {
+    const result = await bridge.datasets.scan();
+    if (!result.ok) {
+      toastError(result.error, "Could not scan the dataset folder");
+      return;
+    }
+    await refreshDatasets();
+    if (options.quiet) return;
+    const added = result.added ?? 0;
+    pushToast({
+      title: added ? `Found ${added} dataset${added === 1 ? "" : "s"}` : "Folder scanned",
+      message: added
+        ? `${result.folder} → ${result.found} file${result.found === 1 ? "" : "s"} indexed.`
+        : `Nothing new in ${result.folder}.`,
+      tone: "good",
+    });
+  } finally {
+    setBusy("scanDatasets", false);
+  }
+}
+
+/** Point the scanner at another folder (null restores the app's own folder). */
+export async function setDatasetsFolder(folder: string | null): Promise<void> {
+  setBusy("scanDatasets", true);
+  try {
+    const result = await bridge.datasets.setFolder(folder);
+    if (!result.ok) {
+      toastError(result.error, "Could not change the dataset folder");
+      return;
+    }
+    if (result.settings) appStore.set({ settings: result.settings });
+    await refreshDatasets();
+    pushToast({
+      title: "Dataset folder updated",
+      message: result.folder,
+      tone: "good",
+    });
+  } finally {
+    setBusy("scanDatasets", false);
+  }
+}
+
+/** Pick a folder with the native dialog and start scanning it. */
+export async function chooseDatasetsFolder(): Promise<void> {
+  const picked = await pickDirectory("Choose the folder the app should scan for datasets");
+  if (!picked) return;
+  await setDatasetsFolder(picked);
+}
+
+/** Bring back a scanned dataset that was removed from the list. */
+export async function restoreDataset(id: string): Promise<void> {
+  const result = await bridge.datasets.restore(id);
+  if (!result.ok) {
+    toastError(result.error, "Could not restore the dataset");
+    return;
+  }
+  await refreshDatasets();
+  pushToast({ title: "Dataset restored", tone: "info" });
+}
+
+/**
+ * Write a dataset — file, folder of shards or Hub id — as ONE file.
+ *
+ * The destination is chosen in a native save dialog, and its extension decides
+ * the format unless `format` says otherwise. Nothing else is written.
+ */
+export async function exportDatasetToFile(
+  id: string,
+  options: { format?: string; raw?: boolean } = {},
+): Promise<string | null> {
+  const dataset = appStore.get().datasets.find((entry) => entry.id === id) ?? null;
+  const format = options.format ?? "jsonl";
+  const base = (dataset?.name ?? "dataset").replace(/\.[A-Za-z0-9]+$/, "");
+
+  const picked = await bridge.dialogs.saveDataset({
+    format,
+    name: base,
+    title: "Export the dataset as one file",
+  });
+  const outputPath = ((picked.paths as string[] | undefined) ?? [])[0];
+  if (!outputPath) return null;
+
+  setBusy(`dataset-export:${id}`, true);
+  try {
+    const result = await bridge.datasets.export({
+      id,
+      outputPath,
+      raw: Boolean(options.raw),
+    });
+    if (!result.ok) {
+      toastError(result.error, "Export failed");
+      return null;
+    }
+    const written = result.output ?? outputPath;
+    pushToast({
+      title: "Dataset exported",
+      message: `${formatCount(result.records ?? 0)} records → ${written}`,
+      tone: "good",
+    });
+    await revealPath(written);
+    return written;
+  } finally {
+    setBusy(`dataset-export:${id}`, false);
+  }
 }
 
 export async function refreshModels(): Promise<void> {
@@ -618,9 +756,9 @@ export async function removeDataset(id: string): Promise<void> {
 }
 
 /**
- * Validate every dataset in the library, one at a time: the built-in set is
- * large and a Python process per file in parallel would only fight over the
- * same cores.
+ * Validate every dataset in the library, one at a time: a Python process per
+ * file in parallel would only fight over the same cores, and the backend is the
+ * single source of truth for every report.
  */
 export async function validateAllDatasets(): Promise<void> {
   const datasets = appStore.get().datasets;
@@ -697,21 +835,29 @@ export async function inspectModelExport(modelId: string): Promise<ModelExportIn
   return result.info;
 }
 
+/**
+ * Export a trained model.
+ *
+ * Two shapes are offered: a folder of loose files (what every loader expects)
+ * or one single .zip file (`pack`) for handing the artefact over as one thing.
+ */
 export async function exportModel(
   modelId: string,
   outputDir: string,
-  merge: boolean,
-): Promise<{ outputDir: string; mode: string; files: string[] } | null> {
+  options: { merge?: boolean; pack?: boolean } = {},
+): Promise<{ outputDir: string; mode: string; files: string[]; archive: boolean } | null> {
+  const merge = Boolean(options.merge);
+  const pack = Boolean(options.pack);
   setBusy("exportModel", true);
   try {
-    const result = await bridge.models.export({ modelId, outputDir, merge });
+    const result = await bridge.models.export({ modelId, outputDir, merge, pack });
     if (!result.ok) {
       toastError(result.error, "Export failed");
       return null;
     }
     const output = result.output_dir ?? outputDir;
     pushToast({
-      title: merge ? "Merged model exported" : "Export finished",
+      title: merge ? "Merged model exported" : pack ? "Exported as one file" : "Export finished",
       message: output,
       tone: "good",
     });
@@ -719,10 +865,18 @@ export async function exportModel(
       outputDir: output,
       mode: result.mode ?? "copy",
       files: result.files ?? [],
+      archive: Boolean(result.archive),
     };
   } finally {
     setBusy("exportModel", false);
   }
+}
+
+/** Pick the destination file for a packed (single .zip) model export. */
+export async function pickModelPackPath(name: string): Promise<string | null> {
+  const result = await bridge.models.packPath({ name });
+  const paths = (result.paths as string[] | undefined) ?? [];
+  return paths[0] ?? null;
 }
 
 export async function removeProject(id: string): Promise<void> {
@@ -785,8 +939,7 @@ export async function wizardSelectDataset(id: string, options: { validate?: bool
   const entry = appStore.get().datasets.find((dataset) => dataset.id === id) ?? null;
   patchWizard({ datasetId: id, datasetReport: entry?.report ?? null });
   if (!entry) return;
-  // A quiet selection (the built-in default standing in until the user picks
-  // their own) records the choice without spawning the Python backend.
+  // A quiet selection records the choice without re-spawning the Python backend.
   if (options.validate === false) return;
 
   setBusy("wizardDataset", true);
@@ -929,17 +1082,20 @@ export async function startTraining(): Promise<boolean> {
     return false;
   }
 
-  // Fall back to the built-in default dataset when nothing was picked: the app
-  // ships with datasets, so "not chosen" still means a real training run.
+  // The app ships no datasets, so a run needs a real choice — never a silent
+  // stand-in. The library is exactly what the user imported or scanned.
   const library = appStore.get().datasets;
-  const dataset = (wizard.datasetId
-    ? library.find((entry) => entry.id === wizard.datasetId)
-    : null)
-    ?? library.find((entry) => entry.builtin && entry.default)
-    ?? library.find((entry) => entry.builtin)
-    ?? null;
+  const dataset = wizard.datasetId
+    ? library.find((entry) => entry.id === wizard.datasetId) ?? null
+    : null;
   if (!dataset) {
-    pushToast({ title: "Select a dataset", tone: "warn" });
+    pushToast({
+      title: "Select a dataset",
+      message: library.length
+        ? "Pick one in the Dataset step."
+        : "The library is empty — scan the dataset folder or import a file.",
+      tone: "warn",
+    });
     return false;
   }
   if (!wizard.config.base_model && wizard.config.method !== "scratch") {

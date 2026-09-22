@@ -21,10 +21,13 @@ const readline = require("node:readline");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { pythonPackageDir, dirs } = require("./paths");
+const { pythonPackageDir, isInsideAsar, dirs } = require("./paths");
 const { settings, getSecret } = require("./store");
 
-// Probed in order; the first interpreter that answers wins.
+// Probed in order; the first interpreter that answers wins. The commands that
+// are normally on PATH come first, because that is what a user expects the app
+// to use; absolute install locations are appended afterwards so a machine whose
+// PATH never mentions Python still works.
 const CANDIDATES = [
   { command: "python", args: [], label: "python" },
   { command: "python3", args: [], label: "python3" },
@@ -32,8 +35,91 @@ const CANDIDATES = [
   { command: "py", args: ["-3.12"], label: "py -3.12" },
   { command: "py", args: ["-3.11"], label: "py -3.11" },
   { command: "py", args: ["-3.10"], label: "py -3.10" },
+  { command: "py", args: ["-3"], label: "py -3" },
   { command: "py", args: [], label: "py" },
 ];
+
+/**
+ * Python installations are not always on PATH — a per-user install on Windows
+ * frequently is not. These directories are read directly so the app can find an
+ * interpreter the shell would not.
+ */
+function knownInstallDirs() {
+  if (process.platform === "win32") {
+    return [
+      process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs", "Python"),
+      process.env.ProgramFiles && path.join(process.env.ProgramFiles, "Python"),
+      process.env.ProgramFiles,
+      process.env["ProgramFiles(x86)"],
+      // WindowsApps is deliberately absent: the install-or-Store aliases there
+      // are 0-byte stubs, and probing one can pop the Store instead of answering.
+    ].filter(Boolean);
+  }
+  return ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/usr/local/opt/python/bin"];
+}
+
+/** Absolute interpreter paths found in the well-known install directories. */
+function knownInstallPaths() {
+  const found = [];
+  for (const dir of knownInstallDirs()) {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // the directory does not exist on this machine
+    }
+    for (const entry of entries) {
+      const binary = process.platform === "win32" ? "python.exe" : null;
+      if (entry.isFile()) {
+        if (/^python(3(\.\d+)?)?(\.exe)?$/i.test(entry.name)) found.push(path.join(dir, entry.name));
+      } else if (entry.isDirectory() && /^[Pp]ython3(\d+|\.\d+)?$/.test(entry.name)) {
+        found.push(binary
+          ? path.join(dir, entry.name, binary)
+          : path.join(dir, entry.name, "bin", "python3"));
+      }
+    }
+  }
+  return found.filter((candidate) => {
+    try {
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * `py -0p` lists every registered installation. It is the most reliable source
+ * on Windows and it costs one short process.
+ */
+async function launcherInstallPaths() {
+  if (process.platform !== "win32") return [];
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn("py", ["-0p"], { windowsHide: true, timeout: 10000 });
+    } catch {
+      resolve([]);
+      return;
+    }
+    let stdout = "";
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      const paths = [];
+      for (const line of stdout.split(/\r?\n/)) {
+        const match = line.match(/[A-Za-z]:\\[^\r\n]*python\.exe/i);
+        if (match) paths.push(match[0].trim());
+      }
+      resolve(paths);
+    };
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.on("error", finish);
+    child.on("close", finish);
+    setTimeout(finish, 10000).unref?.();
+  });
+}
 
 // Joined with newlines: the interpreter is fed this as a single `-c` program, so
 // omitting the separator would glue the imports onto the print call.
@@ -50,10 +136,38 @@ const PROBE = [
 
 let resolvedInterpreter = null; // { command, args, label, info }
 let probeCache = new Map();
+let lastInterpreter = null; // the one the most recent spawn used, for diagnostics
+let lastStart = null; // { command, cwd } of the most recent spawn attempt
 
-function baseArgs(interpreter) {
+/**
+ * How to actually start an interpreter that already answered the probe.
+ *
+ * The probe reports `sys.executable`, and that absolute path is what every
+ * later call uses. This is what makes the app immune to the classic
+ * "spawn python ENOENT": the bare name only has to work once, during probing.
+ */
+function invocation(interpreter) {
+  if (!interpreter) return null;
+  const discovered = interpreter.info && interpreter.info.executable;
+  if (typeof discovered === "string" && discovered.trim()) {
+    try {
+      if (fs.existsSync(discovered)) return { command: discovered, args: [] };
+    } catch {
+      /* fall through to the probed command */
+    }
+  }
+  return { command: interpreter.command, args: interpreter.args || [] };
+}
+
+/** Drop every cached result so the next call re-probes from scratch. */
+function invalidate() {
+  resolvedInterpreter = null;
+  probeCache = new Map();
+}
+
+function baseArgs(start) {
   // -X utf8 keeps non-ASCII dataset content and paths intact on Windows.
-  return [...(interpreter.args || []), "-X", "utf8", "-m", "zeqouxtraining.cli"];
+  return [...(start.args || []), "-X", "utf8", "-m", "zeqouxtraining.cli"];
 }
 
 function buildEnv(extra = {}) {
@@ -154,19 +268,34 @@ async function probe(interpreter) {
   return payload;
 }
 
-/** Probe every candidate (including a configured one) and report each result. */
-async function discover(force = false) {
-  if (force) probeCache = new Map();
+/**
+ * Every interpreter worth probing, in priority order: the one the user chose,
+ * the commands on PATH, then absolute paths found on disk.
+ */
+async function candidates() {
   const configured = settings().get().interpreterPath;
   const list = [];
-  if (configured) list.push({ command: configured, args: [], label: configured, configured: true });
-  for (const candidate of CANDIDATES) {
-    if (configured && candidate.command === configured) continue;
+  const seen = new Set();
+  const push = (candidate) => {
+    const key = `${candidate.command} ${(candidate.args || []).join(" ")}`;
+    if (seen.has(key)) return;
+    seen.add(key);
     list.push(candidate);
-  }
+  };
 
+  if (configured) push({ command: configured, args: [], label: configured, configured: true });
+  for (const candidate of CANDIDATES) push(candidate);
+  for (const executable of [...knownInstallPaths(), ...(await launcherInstallPaths())]) {
+    push({ command: executable, args: [], label: executable });
+  }
+  return list;
+}
+
+/** Probe every candidate (including a configured one) and report each result. */
+async function discover(force = false) {
+  if (force) invalidate();
   const results = [];
-  for (const candidate of list) {
+  for (const candidate of await candidates()) {
     // eslint-disable-next-line no-await-in-loop - sequential on purpose, keeps output ordered
     results.push(await probe(candidate));
   }
@@ -176,17 +305,9 @@ async function discover(force = false) {
 /** The interpreter the app will actually use, or null with a reason. */
 async function resolve(force = false) {
   if (resolvedInterpreter && !force) return resolvedInterpreter;
+  if (force) invalidate();
 
-  const configured = settings().get().interpreterPath;
-  if (configured) {
-    const result = await probe({ command: configured, args: [], label: configured });
-    if (result.available) {
-      resolvedInterpreter = result;
-      return result;
-    }
-  }
-
-  for (const candidate of CANDIDATES) {
+  for (const candidate of await candidates()) {
     // eslint-disable-next-line no-await-in-loop - sequential on purpose
     const result = await probe(candidate);
     if (result.available) {
@@ -197,8 +318,29 @@ async function resolve(force = false) {
   return null;
 }
 
+/** Why nothing worked, spelled out for a human. */
+async function diagnosis() {
+  const tried = await candidates();
+  const reasons = [];
+  for (const candidate of tried) {
+    // eslint-disable-next-line no-await-in-loop - only reached when nothing works
+    const result = await probe(candidate);
+    if (result.reason) reasons.push(`${result.label}: ${result.reason}`);
+  }
+  return {
+    message: "No working Python interpreter was found.",
+    hint: process.platform === "win32"
+      ? "Install Python 3.10–3.13 from python.org (tick 'Add python.exe to PATH'), then press "
+        + "Install in Settings → Environment. Already installed? Choose the interpreter by hand "
+        + "under Settings → Environment."
+      : "Install Python 3.10–3.13 with your package manager, then press Install in "
+        + "Settings → Environment, or pick the interpreter by hand.",
+    tried: reasons.slice(0, 12),
+  };
+}
+
 function setInterpreter(executablePath) {
-  resolvedInterpreter = null;
+  invalidate();
   settings().merge({ interpreterPath: executablePath || null });
 }
 
@@ -214,8 +356,10 @@ async function health() {
           label: interpreter.label,
           command: interpreter.command,
           args: interpreter.args || [],
+          executable: (interpreter.info && interpreter.info.executable) || interpreter.command,
+          spawnedWith: invocation(interpreter).command,
         }
-      : { available: false, reason: "No working Python interpreter was found." },
+      : { available: false, ...(await diagnosis()) },
     packageDir,
     backendPresent: hasPackage,
     cacheDir: dirs.hfCache(),
@@ -226,19 +370,33 @@ async function health() {
 async function spawnBackend(commandArgs, options = {}) {
   const interpreter = await resolve();
   if (!interpreter) {
-    throw new Error(
-      "No Python interpreter was found. Install Python 3.10+ and select it in Settings → Environment.",
-    );
+    const info = await diagnosis();
+    const error = new Error(info.message);
+    error.hint = info.hint;
+    error.code = "no_python";
+    error.tried = info.tried;
+    throw error;
   }
 
   const packageDir = pythonPackageDir();
   if (!fs.existsSync(path.join(packageDir, "zeqouxtraining", "cli.py"))) {
     throw new Error(`The Python backend package was not found at ${packageDir}.`);
   }
+  if (isInsideAsar(packageDir)) {
+    // The OS cannot chdir into an archive; spawning from there fails with a
+    // misleading ENOENT. Say what is actually wrong instead.
+    const error = new Error(`The Python backend is inside app.asar (${packageDir}).`);
+    error.code = "backend_unavailable";
+    error.hint = "Reinstall the app: a packaged build must keep the backend in resources/python.";
+    throw error;
+  }
 
+  lastInterpreter = interpreter;
+  const start = invocation(interpreter);
+  lastStart = { command: start.command, cwd: packageDir };
   return spawn(
-    interpreter.command,
-    [...baseArgs(interpreter), ...commandArgs],
+    start.command,
+    [...baseArgs(start), ...commandArgs],
     {
       cwd: packageDir,
       env: buildEnv(options.env),
@@ -261,8 +419,14 @@ async function run(commandArgs, options = {}) {
       ok: false,
       events: [],
       result: null,
-      error: { code: "no_python", message: error.message, hint: "", traceback: "" },
-      stderr: "",
+      error: {
+        code: error.code || "no_python",
+        message: error.message,
+        hint: error.hint || "",
+        tried: error.tried || [],
+        traceback: "",
+      },
+      stderr: (error.tried || []).join("\n"),
       code: -1,
       durationMs: Date.now() - started,
     };
@@ -305,6 +469,37 @@ async function run(commandArgs, options = {}) {
     });
     child.on("close", (exitCode) => resolve(exitCode ?? -1));
   });
+
+  // Nothing was spoken on the protocol: the backend never got as far as
+  // answering. Say what actually happened instead of letting the caller invent
+  // a reason, and drop the cached interpreter so the next call re-discovers it.
+  if (!result && !errorPayload) {
+    const detail = stderrLines.join(" ").trim();
+    const notFound = /ENOENT|cannot find the file|not recognized|No such file/i.test(detail);
+    const used = (lastStart && lastStart.command)
+      || (lastInterpreter && invocation(lastInterpreter).command)
+      || "python";
+    const cwd = (lastStart && lastStart.cwd) || "";
+    invalidate();
+    return {
+      ok: false,
+      events,
+      result: null,
+      error: {
+        code: notFound ? "no_python" : "backend_unavailable",
+        message: notFound
+          ? `The Python backend could not be started (${used}).`
+          : "The Python backend stopped before it answered.",
+        hint: notFound
+          ? `Started as '${used}'${cwd ? ` from '${cwd}'` : ""}. Check that both the interpreter and the backend folder still exist — reinstalling the app repairs a damaged install, and Settings → Environment lets you pick the interpreter by hand.`
+          : (detail.slice(-500) || "No output was produced. Try again with the environment panel open."),
+        traceback: "",
+      },
+      stderr: stderrLines.join("\n"),
+      code,
+      durationMs: Date.now() - started,
+    };
+  }
 
   return {
     ok: code === 0 && !errorPayload,
@@ -404,6 +599,9 @@ module.exports = {
   resolve,
   setInterpreter,
   health,
+  diagnosis,
+  invocation,
+  invalidate,
   run,
   stream,
   buildEnv,

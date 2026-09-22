@@ -257,12 +257,28 @@ def _inspect_local(path: Path) -> dict[str, Any]:
             "message": "No model weights were found in this folder.",
             "hint": "Expected one of: model.safetensors, *.bin, *.gguf.",
         })
-    if not (path / "tokenizer_config.json").is_file() and not (path / "tokenizer.json").is_file() and not is_adapter:
+    # A run trained from scratch writes the character-level tokenizer it learned
+    # from the dataset; that is a tokenizer, not a missing one.
+    char_vocab = (path / "zeqou_tokenizer.json").is_file()
+    has_tokenizer = (
+        (path / "tokenizer_config.json").is_file()
+        or (path / "tokenizer.json").is_file()
+        or char_vocab
+    )
+    if not has_tokenizer and not is_adapter:
         issues.append({
             "severity": "warning",
             "code": "no_tokenizer",
             "message": "No tokenizer files were found locally.",
             "hint": "Training will try to use the base model's tokenizer if one is identifiable.",
+        })
+    if char_vocab and not is_adapter:
+        issues.append({
+            "severity": "info",
+            "code": "char_tokenizer",
+            "message": "Trained from scratch: the character-level tokenizer learned from the dataset is saved here.",
+            "hint": "The app uses it automatically in the playground and in exports. "
+                    "`AutoTokenizer` will not read it — `zeqou_tokenizer.json` holds the vocabulary.",
         })
     if is_adapter:
         issues.append({

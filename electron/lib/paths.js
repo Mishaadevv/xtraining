@@ -3,6 +3,7 @@
  *
  * Everything user-generated lives under Electron's userData directory:
  *   settings.json, secrets.json, datasets.json, models.json, runs.json
+ *   datasets/              files the user drops in, scanned into the library
  *   runs/<runId>/          checkpoints, trainer state, logs, metadata
  *   models/                trained models produced by this app
  */
@@ -34,47 +35,55 @@ const files = {
 };
 
 /**
- * The Python backend package. In development it sits next to the repo; in a
- * packaged build electron-builder copies it into the app's resources.
+ * True for a path inside an asar archive.
+ *
+ * `fs` sees through an asar, but the operating system does not: a child process
+ * cannot be started with a working directory inside one. Node reports that as
+ * "spawn python ENOENT", which reads like a missing interpreter and is not —
+ * so an asar path is never used as the backend directory.
+ */
+function isInsideAsar(target) {
+  const value = String(target).replace(/\\/g, "/");
+  return value.includes("/app.asar/") && !value.includes("/app.asar.unpacked/");
+}
+
+/**
+ * The Python backend package — always a real directory on disk.
+ *
+ * A packaged build copies it next to the app through electron-builder's
+ * extraResources (a real folder); development uses the repo folder next to
+ * `electron/`. The unpacked-archive location is kept as a last resort.
  */
 function pythonPackageDir() {
   const candidates = [
-    path.join(__dirname, "..", "..", "python"),
     path.join(process.resourcesPath || "", "python"),
     path.join(process.resourcesPath || "", "app.asar.unpacked", "python"),
+    path.join(__dirname, "..", "..", "python"),
   ];
   for (const candidate of candidates) {
+    if (isInsideAsar(candidate)) continue;
     try {
       if (fs.existsSync(path.join(candidate, "zeqouxtraining", "cli.py"))) return candidate;
     } catch {
       /* keep looking */
     }
   }
-  return candidates[0];
+  return candidates[candidates.length - 1];
 }
 
 /**
- * The bundled dataset folder. Same resolution story as the Python package:
- * the repo folder in development, `resources/datasets` in a packaged build.
+ * The dataset folder the app scans.
+ *
+ * Deliberately inside userData: the app ships no datasets at all, so the files
+ * that appear under Datasets are exactly the ones the user put there. The
+ * folder can be pointed somewhere else in Settings → Datasets.
  */
 function datasetsDir() {
-  const candidates = [
-    path.join(__dirname, "..", "..", "datasets"),
-    path.join(process.resourcesPath || "", "datasets"),
-    path.join(process.resourcesPath || "", "app.asar.unpacked", "datasets"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) return candidate;
-    } catch {
-      /* keep looking */
-    }
-  }
-  return candidates[0];
+  return path.join(root(), "datasets");
 }
 
 function ensureDirs() {
-  for (const dir of [dirs.root(), dirs.runs(), dirs.models(), dirs.cache(), dirs.logs()]) {
+  for (const dir of [dirs.root(), dirs.runs(), dirs.models(), dirs.cache(), dirs.logs(), dirs.datasets()]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -118,4 +127,15 @@ function uniqueDir(parent, base) {
   return candidate;
 }
 
-module.exports = { dirs, files, pythonPackageDir, datasetsDir, ensureDirs, slugify, uniqueDir, isInside, root };
+module.exports = {
+  dirs,
+  files,
+  pythonPackageDir,
+  datasetsDir,
+  ensureDirs,
+  slugify,
+  uniqueDir,
+  isInside,
+  isInsideAsar,
+  root,
+};

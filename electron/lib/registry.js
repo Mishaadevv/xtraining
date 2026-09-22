@@ -13,7 +13,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
-const { datasets: datasetsStore, models: modelsStore, projects: projectsStore } = require("./store");
+const {
+  settings: settingsStore,
+  datasets: datasetsStore,
+  models: modelsStore,
+  projects: projectsStore,
+} = require("./store");
 const python = require("./python");
 const { dirs, isInside } = require("./paths");
 
@@ -43,109 +48,240 @@ function fileSize(target) {
 /* --------------------------------------------------------------- datasets */
 
 /**
- * Datasets that ship with the application.
+ * Dataset library.
  *
- * The `datasets/` folder next to the app (repo folder in development,
- * `resources/datasets` when packaged) is scanned on demand, so a built-in
- * dataset is always in sync with what was actually installed. Names, record
- * counts and the default flag come from `datasets/manifest.json`; anything not
- * listed there still appears, with a name derived from its file name.
+ * Nothing is bundled: the app ships without a single dataset, and the library
+ * is exactly what the user put there. Two ways in, one list out:
  *
- * Validation reports for built-ins are kept in memory only: the files
- * themselves are app assets and may be replaced by an update, so a stale
- * stored report would lie about the current file.
+ *   · **scan** the dataset folder (Settings → Datasets). Every supported file
+ *     in it is listed, and every subfolder that contains dataset files is
+ *     listed as one shard set. This is what makes "I dropped my files in a
+ *     folder" work without importing anything by hand.
+ *   · **import** an individual file, folder or Hub id from anywhere on disk.
+ *
+ * Datasets are still referenced in place — a scan records paths and never
+ * copies data. Validation reports are stored with the entry, because a report
+ * is the expensive part and the file is not app-managed.
  */
-const BUILTIN_PREFIX = "builtin:";
-const builtinReports = new Map(); // id -> { report, validatedAt }
 
-function builtinManifest() {
-  try {
-    const file = path.join(dirs.datasets(), "manifest.json");
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    const map = new Map();
-    for (const item of parsed.datasets || []) {
-      if (item && item.file) map.set(String(item.file).replace(/\\/g, "/"), item);
+/**
+ * The extensions the scanner watches. `python/zeqouxtraining/datasets.py`
+ * (`FORMAT_BY_EXTENSION`) is the single source of truth for what can actually
+ * be *read*; the smoke test compares the two lists so they cannot drift.
+ */
+const SCAN_EXTENSIONS = [
+  ".json", ".jsonl", ".ndjson", ".jsonlines",
+  ".csv", ".psv", ".tsv", ".tab",
+  ".txt", ".text", ".md", ".markdown",
+  ".parquet", ".pq", ".arrow", ".feather", ".orc",
+  ".sqlite", ".sqlite3", ".db",
+  ".xlsx", ".xlsm", ".xls",
+  ".yaml", ".yml",
+];
+const COMPRESSION_SUFFIXES = [".gz", ".bz2", ".xz", ".lzma"];
+const FOLDER_ORIGIN = "folder";
+const MAX_SCAN_DEPTH = 6;
+
+/** A case- and separator-insensitive key, so ids survive a rescan. */
+function pathKey(target) {
+  const normalised = path.resolve(String(target).replace(/[\\/]+/g, path.sep));
+  return process.platform === "win32" ? normalised.toLowerCase() : normalised;
+}
+
+/** True for a file name the backend can open, compressed or not. */
+function isSupportedFile(name) {
+  let lowered = String(name).toLowerCase();
+  for (const suffix of COMPRESSION_SUFFIXES) {
+    if (lowered.endsWith(suffix)) {
+      lowered = lowered.slice(0, -suffix.length);
+      break;
     }
-    return map;
-  } catch {
-    return new Map();
   }
+  const dot = lowered.lastIndexOf(".");
+  return dot > 0 && SCAN_EXTENSIONS.includes(lowered.slice(dot));
 }
 
-/** Fallback label when the manifest has nothing to say: "code_python_5" -> "Code Python 5". */
-function prettyBuiltinName(relative) {
-  const base = path.basename(relative, path.extname(relative));
-  return base
-    .split(/[_\-.]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+/** The folder that is scanned. Configurable; defaults to the app's own folder. */
+function datasetsFolder() {
+  const configured = settingsStore().get().datasetsDir;
+  return configured && String(configured).trim() ? String(configured) : dirs.datasets();
 }
 
-function listBuiltinDatasets() {
-  const root = dirs.datasets();
-  const manifest = builtinManifest();
-  const entries = [];
+function containsSupportedFiles(dir, depth = 0) {
+  if (depth > MAX_SCAN_DEPTH) return false;
+  let items;
+  try {
+    items = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const item of items) {
+    if (item.name.startsWith(".")) continue;
+    if (item.isFile() && isSupportedFile(item.name)) return true;
+    if (item.isDirectory() && containsSupportedFiles(path.join(dir, item.name), depth + 1)) return true;
+  }
+  return false;
+}
 
-  const walk = (dir) => {
-    let items = [];
-    try {
-      items = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
+/**
+ * What the folder holds: loose dataset files directly in it, plus one entry per
+ * subfolder that contains dataset files (a shard set). Nested files are covered
+ * by their shard-set entry, so the list never shows the same data twice.
+ */
+function discoverInFolder(root) {
+  const found = [];
+  let items;
+  try {
+    items = fs.readdirSync(root, { withFileTypes: true });
+  } catch (error) {
+    return {
+      found,
+      error: {
+        code: "folder_unreadable",
+        message: `The dataset folder '${root}' could not be read.`,
+        hint: process.env.ZEQOUX_DEV
+          ? "Check the path in Settings → Datasets."
+          : `Create the folder ('${root}') or choose another one in Settings → Datasets.`,
+      },
+    };
+  }
+
+  for (const item of items) {
+    if (item.name.startsWith(".")) continue;
+    const full = path.join(root, item.name);
+    if (item.isDirectory()) {
+      if (containsSupportedFiles(full)) found.push({ path: full, isDirectory: true, name: item.name });
+      continue;
     }
-    for (const item of items) {
-      const full = path.join(dir, item.name);
-      if (item.isDirectory()) {
-        walk(full);
-        continue;
-      }
-      if (item.name === "manifest.json" || !/\.(json|jsonl)$/i.test(item.name)) continue;
-
-      const relative = path.relative(root, full).replace(/\\/g, "/");
-      const meta = manifest.get(relative) || {};
-      const id = BUILTIN_PREFIX + relative;
-      const cached = builtinReports.get(id);
-
-      entries.push({
-        id,
-        name: meta.name || prettyBuiltinName(relative),
-        path: full.replace(/\\/g, "/"),
-        format: path.extname(item.name).replace(".", "").toLowerCase(),
-        isDirectory: false,
-        sizeBytes: fileSize(full),
-        addedAt: 0,
-        records: meta.records ?? cached?.report?.dataset?.records ?? 0,
-        usable: cached?.report?.stats?.usable ?? 0,
-        status: cached?.report?.status ?? "unvalidated",
-        mapping: cached?.report?.mapping ?? null,
-        issues: cached?.report?.issues ?? [],
-        report: cached?.report ?? null,
-        builtin: true,
-        default: Boolean(meta.default),
-        lang: meta.lang || null,
-        thinking: Boolean(meta.thinking),
-        validatedAt: cached?.validatedAt ?? null,
-      });
+    if (item.isFile() && isSupportedFile(item.name)) {
+      found.push({ path: full, isDirectory: false, name: item.name });
     }
+  }
+  return { found, error: null };
+}
+
+function datasetFormatOf(name, isDirectory) {
+  if (isDirectory) return "folder";
+  let lowered = String(name).toLowerCase();
+  let compression = null;
+  for (const suffix of COMPRESSION_SUFFIXES) {
+    if (lowered.endsWith(suffix)) {
+      compression = suffix;
+      lowered = lowered.slice(0, -suffix.length);
+      break;
+    }
+  }
+  const extension = lowered.slice(lowered.lastIndexOf(".") + 1);
+  return compression ? `${extension}${compression}` : extension;
+}
+
+/**
+ * Scan the dataset folder into the library.
+ *
+ * The scan never deletes data and never touches an existing report: entries it
+ * finds again keep their validation history, and entries whose file has gone
+ * are dropped from the list (removed by the user, they stay hidden).
+ */
+function scanDatasetsFolder(options = {}) {
+  const root = datasetsFolder();
+  const discovery = discoverInFolder(root);
+  const base = {
+    folder: root,
+    found: discovery.found.length,
+    scannedAt: Date.now(),
   };
 
-  walk(root);
-  // The default stands first, everything else alphabetically.
-  entries.sort((a, b) => Number(b.default) - Number(a.default) || a.name.localeCompare(b.name));
-  return entries;
+  if (discovery.error) return { ok: false, ...base, error: discovery.error, datasets: listDatasets() };
+  if (options.register === false) return { ok: true, ...base, datasets: listDatasets() };
+
+  const store = datasetsStore();
+  const list = store.get();
+  const index = new Map(list.map((item) => [pathKey(item.path), item]));
+  const seen = new Set();
+  const added = [];
+
+  for (const item of discovery.found) {
+    const key = pathKey(item.path);
+    seen.add(key);
+    const existing = index.get(key);
+    if (existing) {
+      // Only what the filesystem owns is refreshed; the report stays put.
+      existing.origin = existing.origin || FOLDER_ORIGIN;
+      existing.sizeBytes = fileSize(item.path);
+      existing.isDirectory = item.isDirectory;
+      existing.format = datasetFormatOf(item.name, item.isDirectory);
+      continue;
+    }
+
+    added.push({
+      id: `ds_fs_${crypto.createHash("sha1").update(key).digest("hex").slice(0, 12)}`,
+      name: item.name,
+      path: item.path.replace(/\\/g, "/"),
+      folder: root.replace(/\\/g, "/"),
+      origin: FOLDER_ORIGIN,
+      format: datasetFormatOf(item.name, item.isDirectory),
+      isDirectory: item.isDirectory,
+      sizeBytes: fileSize(item.path),
+      addedAt: Date.now(),
+      records: 0,
+      usable: 0,
+      status: "unvalidated",
+      mapping: null,
+      issues: [],
+      report: null,
+    });
+  }
+
+  added.sort((a, b) => a.name.localeCompare(b.name));
+  const kept = list.filter((item) => item.origin !== FOLDER_ORIGIN
+    || item.hidden
+    || seen.has(pathKey(item.path)));
+  store.replace([...added, ...kept]);
+
+  return {
+    ok: true,
+    ...base,
+    added: added.length,
+    removed: list.length - kept.length,
+    hidden: kept.filter((item) => item.hidden).length,
+    datasets: listDatasets(),
+  };
 }
 
-/** A stored entry, a built-in entry or null — ids and paths both resolve. */
-function findDataset(idOrPath) {
-  const stored = datasetsStore().get().find((item) => item.id === idOrPath || item.path === idOrPath);
-  if (stored) return stored;
-  return listBuiltinDatasets().find((item) => item.id === idOrPath || item.path === idOrPath) || null;
+/** Which dataset types this install can actually read, straight from the backend. */
+async function datasetFormats() {
+  const response = await python.run(["dataset-formats"]);
+  if (response.result) return { ok: true, ...response.result };
+  return {
+    ok: false,
+    error: response.error || {
+      code: "backend_unavailable",
+      message: "The list of supported dataset types needs the Python backend.",
+    },
+    extensions: [...SCAN_EXTENSIONS],
+    compression: [...COMPRESSION_SUFFIXES],
+    export_formats: ["jsonl", "json", "csv", "tsv", "txt", "parquet"],
+    formats: [],
+  };
 }
 
-/** User imports first, built-ins after — the library always has something usable. */
+/** Every dataset in the library that the user has not hidden. */
 function listDatasets() {
-  return [...datasetsStore().get(), ...listBuiltinDatasets()];
+  return datasetsStore().get().filter((item) => !item.hidden);
+}
+
+/** Datasets the user hid — shown separately so nothing disappears silently. */
+function hiddenDatasets() {
+  return datasetsStore().get().filter((item) => item.hidden);
+}
+
+/** A stored entry or null — an id or a path both resolve. */
+function findDataset(idOrPath) {
+  if (!idOrPath) return null;
+  const key = pathKey(idOrPath);
+  return datasetsStore().get().find(
+    (item) => item.id === idOrPath || pathKey(item.path) === key,
+  ) || null;
 }
 
 function importDataset(targetPath) {
@@ -156,13 +292,15 @@ function importDataset(targetPath) {
 
   const name = path.basename(targetPath);
   const isDir = fs.statSync(targetPath).isDirectory();
-  const format = isDir ? "folder" : path.extname(targetPath).replace(".", "").toLowerCase();
+  const fromFolder = isInside(datasetsFolder(), targetPath);
 
   const entry = {
     id: uid("ds"),
     name,
-    path: targetPath.replace(/\\/g, "/"),
-    format,
+    path: path.resolve(targetPath).replace(/\\/g, "/"),
+    folder: fromFolder ? datasetsFolder().replace(/\\/g, "/") : null,
+    origin: fromFolder ? FOLDER_ORIGIN : "import",
+    format: datasetFormatOf(name, isDir),
     isDirectory: isDir,
     sizeBytes: fileSize(targetPath),
     addedAt: Date.now(),
@@ -176,10 +314,22 @@ function importDataset(targetPath) {
 
   const store = datasetsStore();
   const list = store.get();
-  const duplicate = list.find((item) => item.path === entry.path);
+  const duplicate = list.find((item) => pathKey(item.path) === pathKey(entry.path));
   if (duplicate) {
     // Re-importing the same path refreshes it instead of duplicating the row.
-    Object.assign(duplicate, { ...entry, id: duplicate.id, addedAt: duplicate.addedAt });
+    Object.assign(duplicate, {
+      ...entry,
+      id: duplicate.id,
+      addedAt: duplicate.addedAt,
+      hidden: false,
+      // A returning dataset keeps the report it already had.
+      records: duplicate.records,
+      usable: duplicate.usable,
+      status: duplicate.status,
+      report: duplicate.report,
+      issues: duplicate.issues,
+      mapping: duplicate.mapping,
+    });
     store.replace(list);
     return { ok: true, dataset: duplicate, refreshed: true };
   }
@@ -241,6 +391,7 @@ function addHfDataset(datasetId, split = "train") {
     mapping: null,
     issues: [],
     report: null,
+    origin: "hub",
   };
   list.unshift(entry);
   store.replace(list);
@@ -281,32 +432,15 @@ async function validateDataset(idOrPath, options = {}) {
   const response = await python.run(args);
   const report = response.result;
   if (!report) {
+    const fallback = await python.diagnosis();
     return {
       ok: false,
       error: response.error || {
         code: "validate_failed",
-        message: "The dataset could not be validated. Is the Python backend available?",
-        hint: response.stderr ? response.stderr.split("\n").slice(-4).join(" ") : "",
-      },
-    };
-  }
-
-  if (entry && entry.builtin) {
-    // Built-in files are app assets that an update may replace, so their
-    // reports live in memory for this session instead of on disk.
-    builtinReports.set(entry.id, { report, validatedAt: Date.now() });
-    return {
-      ok: true,
-      report,
-      dataset: {
-        ...entry,
-        records: report.dataset?.records ?? entry.records,
-        usable: report.stats ? report.stats.usable : 0,
-        status: report.status,
-        mapping: report.mapping,
-        issues: report.issues || [],
-        report,
-        validatedAt: Date.now(),
+        message: "The dataset could not be validated: the backend produced no report.",
+        hint: response.stderr
+          ? response.stderr.split("\n").slice(-4).join(" ")
+          : fallback.hint,
       },
     };
   }
@@ -337,18 +471,92 @@ async function validateDataset(idOrPath, options = {}) {
 }
 
 function removeDataset(id) {
-  if (String(id).startsWith(BUILTIN_PREFIX)) {
+  const store = datasetsStore();
+  const list = store.get();
+  const target = list.find((item) => item.id === id);
+  if (!target) {
+    return { ok: false, error: { code: "not_found", message: "That dataset is not in the library." } };
+  }
+  if (target.origin === FOLDER_ORIGIN) {
+    // A scanned dataset still exists on disk, so removal hides the row rather
+    // than pretending the file was deleted — and a rescan will not bring it back.
+    target.hidden = true;
+    store.replace(list);
+    return { ok: true, hidden: true, path: target.path };
+  }
+  store.replace(list.filter((item) => item.id !== id));
+  return { ok: true };
+}
+
+/** Bring a hidden (scanned) dataset back into the list. */
+function restoreDataset(id) {
+  const store = datasetsStore();
+  const list = store.get();
+  const target = list.find((item) => item.id === id);
+  if (!target) {
+    return { ok: false, error: { code: "not_found", message: "That dataset is not in the library." } };
+  }
+  target.hidden = false;
+  store.replace(list);
+  return { ok: true };
+}
+
+/** Point the scanner at another folder and index it straight away. */
+function setDatasetsFolder(folder) {
+  const clean = folder && String(folder).trim() ? String(folder).trim() : null;
+  settingsStore().merge({ datasetsDir: clean });
+  const scan = scanDatasetsFolder();
+  return { ...scan, folder: datasetsFolder(), settings: settingsStore().get() };
+}
+
+/**
+ * Write any dataset — file, folder of shards or Hub id — as ONE file.
+ *
+ * ``outputPath`` is a file name; the format comes from its extension unless
+ * ``outputFormat`` overrides it. Nothing else is written: no sidecar manifests,
+ * no folder of parts.
+ */
+async function exportDataset(idOrPath, options = {}) {
+  const entry = findDataset(idOrPath);
+  const target = entry ? entry.path : idOrPath;
+  if (!target) {
+    return { ok: false, error: { code: "not_found", message: "Dataset not found." } };
+  }
+  const outputPath = String(options.outputPath || "").trim();
+  if (!outputPath) {
     return {
       ok: false,
       error: {
-        code: "builtin",
-        message: "Built-in datasets ship with the app and cannot be removed.",
+        code: "no_output",
+        message: "Choose where the exported file should be written.",
+        hint: "The export is a single file — give it a name such as dataset.jsonl.",
       },
     };
   }
-  const store = datasetsStore();
-  store.replace(store.get().filter((item) => item.id !== id));
-  return { ok: true };
+
+  // --overwrite is always passed because the destination came from a native
+  // save dialog, which already asked the user about replacing an existing file.
+  const args = [
+    "export-dataset", ...datasetSourceArgs(entry || target, {}),
+    "--output", outputPath, "--overwrite",
+  ];
+  if (options.outputFormat) args.push("--out-format", String(options.outputFormat));
+  if (options.mapping) args.push("--mapping", JSON.stringify(options.mapping));
+  if (options.raw) args.push("--raw");
+  if (options.maxRecords) args.push("--limit", String(options.maxRecords));
+
+  const response = await python.run(args);
+  if (!response.result) {
+    return {
+      ok: false,
+      error: response.error || {
+        code: "export_failed",
+        message: "The dataset could not be exported.",
+        hint: response.stderr ? response.stderr.split("\n").slice(-4).join(" ") : "",
+      },
+    };
+  }
+  return { ok: true, ...response.result, datasetId: entry ? entry.id : null };
 }
 
 async function previewDataset(idOrPath, limit = 5) {
@@ -548,13 +756,22 @@ function removeProject(id) {
 
 module.exports = {
   listDatasets,
-  listBuiltinDatasets,
+  hiddenDatasets,
   findDataset,
   importDataset,
   addHfDataset,
   validateDataset,
   removeDataset,
+  restoreDataset,
   previewDataset,
+  scanDatasetsFolder,
+  datasetsFolder,
+  supportedExtensions: () => [...SCAN_EXTENSIONS],
+  compressionSuffixes: () => [...COMPRESSION_SUFFIXES],
+  setDatasetsFolder,
+  datasetFormats,
+  exportDataset,
+  isSupportedFile,
   listModels,
   addModel,
   registerTrainedModel,

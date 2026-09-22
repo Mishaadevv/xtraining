@@ -88,7 +88,7 @@ async function describe(modelId) {
   return { ok: true, info: response.result.info, model, run: findRun(model) };
 }
 
-/** Export a model folder to a destination the user chose. */
+/** Export a model as a folder, or as one .zip file, at a destination the user chose. */
 async function exportModel(payload = {}) {
   const model = findModel(payload.modelId);
   if (!model) {
@@ -100,14 +100,17 @@ async function exportModel(payload = {}) {
       error: { code: "no_path", message: "This model has no local folder to export." },
     };
   }
+  const pack = Boolean(payload.pack);
   const outputDir = String(payload.outputDir || "").trim();
   if (!outputDir) {
     return {
       ok: false,
       error: {
         code: "no_output",
-        message: "Choose a destination folder first.",
-        hint: "Exports are written into an empty folder — nothing is overwritten.",
+        message: pack ? "Choose a file name first." : "Choose a destination folder first.",
+        hint: pack
+          ? "A packed export is one .zip file — nothing is overwritten."
+          : "Exports are written into an empty folder — nothing is overwritten.",
       },
     };
   }
@@ -123,6 +126,7 @@ async function exportModel(payload = {}) {
   const baseModel = model.baseModel || (run && run.baseModel);
   if (baseModel) args.push("--base-model", baseModel);
   if (payload.merge) args.push("--merge");
+  if (pack) args.push("--pack");
 
   const response = await python.run(args);
   if (!response.result) {

@@ -213,44 +213,53 @@ a {
   border-radius: var(--r-lg);
 }
 
-.zq-input {
-  width: 100%;
-  background: var(--input);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 7px 10px;
-  font-size: 13px;
-  outline: none;
-  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
-}
-.zq-input:hover {
-  border-color: var(--border-strong);
-}
-.zq-input:focus {
-  border-color: var(--acc);
-  box-shadow: 0 0 0 3px var(--acc-soft);
-}
-.zq-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.zq-input::placeholder {
-  color: var(--text-3);
-}
+/*
+ * Declared inside `@layer components` on purpose. Custom CSS written outside a
+ * layer always beats Tailwind's utilities, so an unlayered `.zq-input` silently
+ * discarded every width passed to a field: `className="w-[104px] shrink-0"`
+ * still rendered at `100%` and, with `shrink-0`, took over its whole row.
+ * Inside the layer the utilities win again, which is what call sites expect.
+ */
+@layer components {
+  .zq-input {
+    width: 100%;
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 7px 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  }
+  .zq-input:hover {
+    border-color: var(--border-strong);
+  }
+  .zq-input:focus {
+    border-color: var(--acc);
+    box-shadow: 0 0 0 3px var(--acc-soft);
+  }
+  .zq-input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .zq-input::placeholder {
+    color: var(--text-3);
+  }
 
-select.zq-input {
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
-    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
-  background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 30px;
-}
+  select.zq-input {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
+      linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 30px;
+  }
 
-textarea.zq-input {
-  resize: vertical;
-  line-height: 1.55;
+  textarea.zq-input {
+    resize: vertical;
+    line-height: 1.55;
+  }
 }
 
 .zq-scroll {

@@ -12,6 +12,7 @@ import type {
   BackendCapability,
   CallResult,
   DatasetEntry,
+  DatasetFormats,
   DatasetReport,
   EnvSnapshot,
   GpuSample,
@@ -43,6 +44,7 @@ interface RawBridge {
     pickModelFolder(): Promise<Record<string, unknown>>;
     pickPython(): Promise<Record<string, unknown>>;
     pickDirectory(title?: string): Promise<Record<string, unknown>>;
+    saveDataset(payload: { format?: string; name?: string; title?: string }): Promise<Record<string, unknown>>;
   };
   settings: {
     get(): Promise<Record<string, unknown>>;
@@ -63,21 +65,27 @@ interface RawBridge {
   hardware: {
     detect(): Promise<Record<string, unknown>>;
     sample(): Promise<Record<string, unknown>>;
-  };
-  datasets: {
+  };  datasets: {
     list(): Promise<Record<string, unknown>>;
     import(paths: string | string[]): Promise<Record<string, unknown>>;
     addHf(payload: { id: string; split?: string }): Promise<Record<string, unknown>>;
     validate(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
     preview(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
     remove(id: string): Promise<Record<string, unknown>>;
+    restore(id: string): Promise<Record<string, unknown>>;
+    scan(options?: { discoverOnly?: boolean }): Promise<Record<string, unknown>>;
+    setFolder(folder: string | null): Promise<Record<string, unknown>>;
+    formats(): Promise<Record<string, unknown>>;
+    export(payload: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
+
   models: {
     list(): Promise<Record<string, unknown>>;
     add(source: string): Promise<Record<string, unknown>>;
     inspect(source: string): Promise<Record<string, unknown>>;
     exportInfo(payload: { modelId: string }): Promise<Record<string, unknown>>;
-    export(payload: { modelId: string; outputDir: string; merge?: boolean }): Promise<Record<string, unknown>>;
+    export(payload: { modelId: string; outputDir: string; merge?: boolean; pack?: boolean }): Promise<Record<string, unknown>>;
+    packPath(payload: { name?: string }): Promise<Record<string, unknown>>;
     remove(id: string): Promise<Record<string, unknown>>;
   };
   projects: {
@@ -186,6 +194,8 @@ export const bridge = {
       raw ? call(raw.dialogs.pickPython()) : Promise.resolve(desktopOnly("File pickers")),
     pickDirectory: (title?: string) =>
       raw ? call(raw.dialogs.pickDirectory(title)) : Promise.resolve(desktopOnly("Folder pickers")),
+    saveDataset: (payload: { format?: string; name?: string; title?: string }) =>
+      raw ? call(raw.dialogs.saveDataset(payload)) : Promise.resolve(desktopOnly("Save dialogs")),
   },
 
   settings: {
@@ -226,8 +236,18 @@ export const bridge = {
   },
 
   datasets: {
-    list: (): Promise<CallResult & { datasets?: DatasetEntry[] }> =>
+    list: (): Promise<CallResult & { datasets?: DatasetEntry[]; hidden?: DatasetEntry[]; folder?: string }> =>
       raw ? call(raw.datasets.list()) : Promise.resolve(desktopOnly("Datasets")),
+    scan: (options?: { discoverOnly?: boolean }): Promise<CallResult & { folder?: string; found?: number; added?: number; datasets?: DatasetEntry[] }> =>
+      raw ? call(raw.datasets.scan(options)) : Promise.resolve(desktopOnly("Scanning the dataset folder")),
+    setFolder: (folder: string | null): Promise<CallResult & { folder?: string; datasets?: DatasetEntry[]; settings?: Settings }> =>
+      raw ? call(raw.datasets.setFolder(folder)) : Promise.resolve(desktopOnly("Changing the dataset folder")),
+    formats: (): Promise<CallResult & Partial<DatasetFormats>> =>
+      raw ? call(raw.datasets.formats()) : Promise.resolve(desktopOnly("Dataset formats")),
+    export: (payload: Record<string, unknown>): Promise<CallResult & { output?: string; format?: string; records?: number; mode?: string }> =>
+      raw ? call(raw.datasets.export(payload)) : Promise.resolve(desktopOnly("Exporting datasets")),
+    restore: (id: string): Promise<CallResult> =>
+      raw ? call(raw.datasets.restore(id)) : Promise.resolve(desktopOnly("Restoring datasets")),
     import: (paths: string | string[]): Promise<CallResult & { imported?: DatasetEntry[]; failed?: { path: string; error: BackendError }[] }> =>
       raw ? call(raw.datasets.import(paths)) : Promise.resolve(desktopOnly("Importing datasets")),
     addHf: (payload: { id: string; split?: string }): Promise<CallResult & { dataset?: DatasetEntry }> =>
@@ -249,8 +269,10 @@ export const bridge = {
       raw ? call(raw.models.inspect(source)) : Promise.resolve(desktopOnly("Inspecting models")),
     exportInfo: (payload: { modelId: string }): Promise<CallResult & { info?: ModelExportInfo }> =>
       raw ? call(raw.models.exportInfo(payload)) : Promise.resolve(desktopOnly("Exporting models")),
-    export: (payload: { modelId: string; outputDir: string; merge?: boolean }): Promise<CallResult & { output_dir?: string; files?: string[]; mode?: string }> =>
+    export: (payload: { modelId: string; outputDir: string; merge?: boolean; pack?: boolean }): Promise<CallResult & { output_dir?: string; files?: string[]; mode?: string; archive?: boolean }> =>
       raw ? call(raw.models.export(payload)) : Promise.resolve(desktopOnly("Exporting models")),
+    packPath: (payload: { name?: string }): Promise<CallResult & { paths?: string[]; path?: string }> =>
+      raw ? call(raw.models.packPath(payload)) : Promise.resolve(desktopOnly("Save dialogs")),
     remove: (id: string): Promise<CallResult> =>
       raw ? call(raw.models.remove(id)) : Promise.resolve(desktopOnly("Removing models")),
   },

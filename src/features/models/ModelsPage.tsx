@@ -44,6 +44,7 @@ import {
   openPath,
   pickAndAddLocalModel,
   pickDirectory,
+  pickModelPackPath,
   removeModel,
   resetWizard,
   revealPath,
@@ -195,9 +196,10 @@ function ModelRow({
 /**
  * Export dialog.
  *
- * Copy mode is always offered. Merging is offered only when the artefact is an
- * adapter *and* the ML runtime is installed — the reason is shown instead of a
- * disabled control with no explanation.
+ * Copy mode is always offered, either as a folder of files or packed into one
+ * single .zip. Merging is offered only when the artefact is an adapter *and* the
+ * ML runtime is installed — the reason is shown instead of a disabled control
+ * with no explanation.
  */
 function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () => void }) {
   const busy = useStore(appStore).busy;
@@ -205,7 +207,8 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
   const [infoError, setInfoError] = useState<string | null>(null);
   const [outputDir, setOutputDir] = useState("");
   const [merge, setMerge] = useState(false);
-  const [done, setDone] = useState<{ outputDir: string; files: string[] } | null>(null);
+  const [pack, setPack] = useState(false);
+  const [done, setDone] = useState<{ outputDir: string; files: string[]; archive: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,9 +228,14 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
     if (picked) setOutputDir(picked);
   };
 
+  const chooseFile = async () => {
+    const picked = await pickModelPackPath(model.name);
+    if (picked) setOutputDir(picked);
+  };
+
   const run = async () => {
-    const result = await exportModel(model.id, outputDir, merge);
-    if (result) setDone({ outputDir: result.outputDir, files: result.files });
+    const result = await exportModel(model.id, outputDir, { merge, pack });
+    if (result) setDone({ outputDir: result.outputDir, files: result.files, archive: result.archive });
   };
 
   const mergeInfo = info?.modes.merge;
@@ -239,12 +247,23 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
         open
         onClose={onClose}
         title="Export finished"
-        description={merge ? "The adapter was merged into a standalone model." : "The adapter files and a description were written."}
+        description={
+          merge
+            ? "The adapter was merged into a standalone model."
+            : done.archive
+              ? "Everything was written into one .zip file."
+              : "The adapter files and a description were written."
+        }
         width={560}
         footer={
           <div className="flex items-center justify-end gap-2">
-            <Button size="sm" variant="quiet" icon={<FolderOpen className="h-3.5 w-3.5" />} onClick={() => void openPath(done.outputDir)}>
-              Open folder
+            <Button
+              size="sm"
+              variant="quiet"
+              icon={<FolderOpen className="h-3.5 w-3.5" />}
+              onClick={() => void (done.archive ? revealPath(done.outputDir) : openPath(done.outputDir))}
+            >
+              {done.archive ? "Show in folder" : "Open folder"}
             </Button>
             <Button size="sm" variant="primary" onClick={onClose}>
               Done
@@ -263,8 +282,9 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
           ))}
         </div>
         <p className="mt-3 text-[11.5px] leading-[17px] text-[var(--text-3)]">
-          README.md explains how to load these weights, and export.json holds the full record of the run
-          that produced them.
+          {done.archive
+            ? "Unpack the archive to get exactly the same export: README.md explains how to load the weights and export.json holds the full record of the run that produced them."
+            : "README.md explains how to load these weights, and export.json holds the full record of the run that produced them."}
         </p>
       </Modal>
     );
@@ -275,7 +295,11 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
       open
       onClose={onClose}
       title={`Export ${model.name}`}
-      description="The export is written into a folder you choose. Nothing is overwritten."
+      description={
+        pack
+          ? "The whole export is written into one .zip file you choose. Nothing is overwritten."
+          : "The export is written into a folder you choose. Nothing is overwritten."
+      }
       width={600}
       footer={
         <div className="flex items-center justify-end gap-2">
@@ -290,7 +314,7 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
             disabled={!info || !outputDir || info.blockers.length > 0}
             onClick={() => void run()}
           >
-            {merge ? "Merge and export" : "Export"}
+            {merge ? "Merge and export" : pack ? "Export as one file" : "Export"}
           </Button>
         </div>
       }
@@ -316,15 +340,33 @@ function ExportModelDialog({ model, onClose }: { model: ModelEntry; onClose: () 
             ) : null}
           </div>
 
-          <Field label="Destination folder" hint="Pick an empty folder, or create a new one.">
+          <Switch
+            checked={pack}
+            onChange={(value) => {
+              setPack(value);
+              setOutputDir("");
+            }}
+            label="Write one single file (.zip)"
+            description="A transformers model is several files at runtime, so the single-file form is an archive. Unpacking it gives the same export, file for file."
+          />
+
+          <Field
+            label={pack ? "Destination file" : "Destination folder"}
+            hint={pack ? "The archive is created at this path." : "Pick an empty folder, or create a new one."}
+          >
             <div className="flex items-center gap-2">
               <Input
                 readOnly
                 value={outputDir}
-                placeholder="No folder chosen yet"
+                placeholder={pack ? "No file chosen yet" : "No folder chosen yet"}
                 spellCheck={false}
               />
-              <Button size="sm" variant="quiet" icon={<FolderOpen className="h-3.5 w-3.5" />} onClick={() => void chooseFolder()}>
+              <Button
+                size="sm"
+                variant="quiet"
+                icon={<FolderOpen className="h-3.5 w-3.5" />}
+                onClick={() => void (pack ? chooseFile() : chooseFolder())}
+              >
                 Choose
               </Button>
             </div>

@@ -124,12 +124,37 @@ class InferenceRuntime:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         events.stage("inference", f"Loading model into {self.device.upper()}")
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            str(path) if not needs_base else base_model,
-            trust_remote_code=False,
-        )
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        tokenizer = None
+        tokenizer_error: Exception | None = None
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                str(path) if not needs_base else base_model,
+                trust_remote_code=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - a from-scratch run brings its own
+            tokenizer_error = exc
+
+        if tokenizer is None and not needs_base:
+            # A model trained from scratch carries the character-level tokenizer
+            # learned from the dataset, and it is used like any other tokenizer —
+            # otherwise such a model could be trained but never talked to.
+            from .backends.scratch import CharTokenizer  # noqa: PLC0415
+
+            if CharTokenizer.has_vocab(path):
+                tokenizer = CharTokenizer.load_from_dir(path)
+                events.log(
+                    "Using the character-level tokenizer saved with this model "
+                    f"({tokenizer.vocab_size:,} symbols)."
+                )
+
+        if tokenizer is None:
+            raise RuntimeError(
+                f"No tokenizer could be loaded for '{path.name}'. "
+                "A from-scratch run keeps its own tokenizer next to the weights; an adapter "
+                "needs its base model's tokenizer to be reachable."
+            ) from tokenizer_error
+        if getattr(tokenizer, "pad_token", None) is None:
+            tokenizer.pad_token = getattr(tokenizer, "eos_token", None)
 
         dtype = torch.bfloat16 if (self.device == "cuda" and torch.cuda.is_bf16_supported()) \
             else (torch.float16 if self.device == "cuda" else torch.float32)

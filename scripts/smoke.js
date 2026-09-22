@@ -75,7 +75,7 @@ function writeMinimalModelDir() {
 }
 
 async function main() {
-  const { ensureDirs, dirs, files } = require("../electron/lib/paths");
+  const { ensureDirs, dirs, files, pythonPackageDir } = require("../electron/lib/paths");
   const store = require("../electron/lib/store");
   const python = require("../electron/lib/python");
   const hardware = require("../electron/lib/hardware");
@@ -105,6 +105,19 @@ async function main() {
     "a Python interpreter was found",
     health.python.available === true,
     health.python.available ? `${health.python.version} (${health.python.executable})` : health.python.reason,
+  );
+  // The probe reports sys.executable and every later spawn uses that absolute
+  // path, so a PATH that changes under the app cannot cause a spawn ENOENT.
+  record(
+    "the interpreter is spawned by absolute path, not by name",
+    Boolean(health.python.executable) && fs.existsSync(health.python.executable)
+      && health.python.spawnedWith === health.python.executable,
+    health.python.available ? health.python.spawnedWith : undefined,
+  );
+  record(
+    "an unavailable interpreter explains itself instead of failing silently",
+    health.python.available === true || (Boolean(health.python.hint) && Array.isArray(health.python.tried)),
+    health.python.available ? undefined : health.python.hint,
   );
   const discovered = await python.discover(true);
   record(
@@ -140,6 +153,16 @@ async function main() {
     "the hf-peft training backend is registered",
     Boolean(hfPeft),
     hfPeft ? `available: ${hfPeft.available} (missing: ${(hfPeft.missing || []).join(", ") || "none"})` : "not found",
+  );
+
+  // The backend must be a real directory: a child process cannot be started
+  // with a working directory inside an asar archive, and Node reports that as a
+  // misleading "spawn python ENOENT". This is the invariant that would have
+  // caught the packaged-build failure.
+  record(
+    "the backend is a real folder on disk, never inside app.asar",
+    !/app\.asar/.test(pythonPackageDir()) && fs.statSync(pythonPackageDir()).isDirectory(),
+    pythonPackageDir(),
   );
 
   /* ------------------------------------------------------------ datasets */
@@ -194,32 +217,179 @@ async function main() {
 
   record("a duplicate import refreshes instead of duplicating", (await registry.importDataset(path.join(FIXTURES, "good.jsonl"))).refreshed === true);
 
-  /* ------------------------------------------------------ built-in datasets */
-  section("Built-in datasets");
-  const bundled = registry.listBuiltinDatasets();
-  record(
-    "bundled datasets ship with the app",
-    bundled.length >= 20,
-    `${bundled.length} files in ${path.basename(dirs.datasets())}`,
+  /* --------------------------------------------------- folder-scanned datasets */
+  section("Dataset folder scanning");
+  const scanRoot = dirs.datasets();
+  fs.mkdirSync(path.join(scanRoot, "shards"), { recursive: true });
+  fs.copyFileSync(path.join(FIXTURES, "good.jsonl"), path.join(scanRoot, "loose.jsonl"));
+  fs.copyFileSync(path.join(FIXTURES, "notes.txt"), path.join(scanRoot, "notes.md"));
+  fs.copyFileSync(
+    path.join(FIXTURES, "folder_clean", "part-01.jsonl"),
+    path.join(scanRoot, "shards", "part-01.jsonl"),
   );
-  record("every bundled dataset file exists on disk", bundled.every((item) => fs.existsSync(item.path)));
-  const defaultBundled = bundled.find((item) => item.default);
-  record("one bundled dataset is marked as the default", Boolean(defaultBundled), defaultBundled?.name);
+  fs.copyFileSync(
+    path.join(FIXTURES, "folder_clean", "part-02.jsonl"),
+    path.join(scanRoot, "shards", "part-02.jsonl"),
+  );
+  fs.writeFileSync(path.join(scanRoot, "README.bin"), "not a dataset", "utf8");
 
-  if (defaultBundled) {
-    const bundledReport = await registry.validateDataset(defaultBundled.id);
-    record(
-      "the default bundled dataset validates through the backend",
-      bundledReport.ok === true && Boolean(bundledReport.report) && bundledReport.report.status !== "errors",
-      `${bundledReport.report?.dataset?.records} records · mapping ${bundledReport.report?.mapping?.kind}`,
-    );
-    const bundledRemove = registry.removeDataset(defaultBundled.id);
-    record(
-      "bundled datasets cannot be removed",
-      bundledRemove.ok === false && bundledRemove.error?.code === "builtin",
-      bundledRemove.error?.message,
-    );
-  }
+  // Nothing is bundled: the library is only ever what the user brought.
+  record(
+    "the app ships no datasets of its own",
+    !fs.existsSync(path.join(ROOT, "datasets")),
+    path.join(ROOT, "datasets"),
+  );
+  record("the scanned folder defaults to the app's own folder", registry.datasetsFolder() === scanRoot, registry.datasetsFolder());
+
+  const scan = registry.scanDatasetsFolder();
+  const scanned = registry.listDatasets().filter((item) => item.origin === "folder");
+  const names = scanned.map((item) => item.name).sort();
+  record(
+    "the folder is scanned into the library",
+    scan.ok === true && scanned.length === 3,
+    `${scanned.length} entries: ${names.join(", ")}`,
+  );
+  record(
+    "a subfolder of shards is one dataset, not one per file",
+    scanned.filter((item) => item.isDirectory).length === 1 && names.includes("shards"),
+    names.join(", "),
+  );
+  record(
+    "files with unsupported extensions are ignored",
+    !scanned.some((item) => item.name.endsWith(".bin")),
+    names.join(", "),
+  );
+  record(
+    "every scanned entry knows the folder it came from",
+    scanned.every((item) => item.folder && fs.existsSync(item.path)),
+  );
+  record("a rescan does not duplicate the list", registry.scanDatasetsFolder().added === 0);
+
+  const loose = scanned.find((item) => item.name === "loose.jsonl");
+  const looseReport = await registry.validateDataset(loose.id);
+  record(
+    "a scanned dataset validates through the backend",
+    looseReport.ok === true && looseReport.report?.status === "ok",
+    `${looseReport.report?.dataset?.records} records · mapping ${looseReport.report?.mapping?.kind}`,
+  );
+  record(
+    "the validation report is stored on the scanned entry",
+    registry.findDataset(loose.id).status === "ok",
+    registry.findDataset(loose.id).status,
+  );
+
+  const shards = scanned.find((item) => item.isDirectory);
+  const shardsReport = await registry.validateDataset(shards.id);
+  record(
+    "a scanned shard folder is read as one dataset",
+    shardsReport.ok === true && shardsReport.report?.dataset?.records === 12,
+    `${shardsReport.report?.dataset?.records} records from ${shardsReport.report?.dataset?.files?.length} files`,
+  );
+
+  const hidden = registry.removeDataset(loose.id);
+  record(
+    "removing a scanned dataset hides it instead of deleting the file",
+    hidden.ok === true && hidden.hidden === true && fs.existsSync(loose.path),
+    hidden.path,
+  );
+  registry.scanDatasetsFolder();
+  record(
+    "a rescan does not resurrect a removed dataset",
+    !registry.listDatasets().some((item) => item.id === loose.id)
+      && registry.hiddenDatasets().some((item) => item.id === loose.id),
+  );
+  record("a hidden dataset can be restored", registry.restoreDataset(loose.id).ok === true
+    && registry.listDatasets().some((item) => item.id === loose.id));
+
+  const elsewhere = path.join(SANDBOX, "elsewhere");
+  fs.mkdirSync(elsewhere, { recursive: true });
+  fs.copyFileSync(path.join(FIXTURES, "good.jsonl"), path.join(elsewhere, "only.jsonl"));
+  const moved = registry.setDatasetsFolder(elsewhere);
+  record(
+    "the folder can be pointed somewhere else and is indexed right away",
+    moved.ok === true && registry.datasetsFolder() === elsewhere
+      && registry.listDatasets().some((item) => item.name === "only.jsonl"),
+    registry.datasetsFolder(),
+  );
+  record(
+    "entries whose files are no longer in the scanned folder are dropped",
+    !registry.listDatasets().some((item) => item.name === "loose.jsonl"),
+  );
+  registry.setDatasetsFolder(null);
+  record(
+    "the folder can be reset to the app's own",
+    registry.datasetsFolder() === scanRoot && registry.listDatasets().some((item) => item.name === "loose.jsonl"),
+    registry.datasetsFolder(),
+  );
+
+  /* ------------------------------------------------ supported dataset types */
+  section("Supported dataset types");
+  const formats = await registry.datasetFormats();
+  record(
+    "the backend reports every type it can read",
+    formats.ok === true && formats.formats.length >= 10,
+    `${formats.formats?.length} types: ${(formats.formats || []).map((f) => f.id).join(", ")}`,
+  );
+  record(
+    "compression and export formats are reported too",
+    Array.isArray(formats.compression) && formats.compression.includes(".gz")
+      && formats.export_formats.includes("jsonl"),
+    `${formats.compression?.join(" ")} · export: ${formats.export_formats?.join(", ")}`,
+  );
+  const backendExtensions = new Set(formats.extensions || []);
+  const appExtensions = new Set(registry.supportedExtensions());
+  record(
+    "the scanner watches exactly the extensions the backend reads",
+    backendExtensions.size === appExtensions.size
+      && [...backendExtensions].every((ext) => appExtensions.has(ext)),
+    `backend ${backendExtensions.size} vs app ${appExtensions.size}`,
+  );
+  record(
+    "an unavailable reader says which package is missing",
+    (formats.formats || []).every((format) => format.available || format.hint),
+    (formats.formats || []).filter((format) => !format.available).map((format) => `${format.id}: ${format.hint}`).join(" · "),
+  );
+
+  /* ------------------------------------------------- dataset export (one file) */
+  section("Dataset export");
+  const exportedFile = path.join(SANDBOX, "exported.jsonl");
+  const exported = await registry.exportDataset(loose.id, { outputPath: exportedFile });
+  record(
+    "a folder-scanned dataset exports to a single file",
+    exported.ok === true && fs.existsSync(exportedFile) && fs.statSync(exportedFile).isFile(),
+    exported.ok ? `${exported.records} records → ${exported.name}` : exported.error?.message,
+  );
+  record(
+    "the export writes one file and nothing else",
+    fs.readdirSync(SANDBOX).filter((name) => name.startsWith("exported.")).length === 1,
+    fs.readdirSync(SANDBOX).filter((name) => name.startsWith("exported.")).join(", "),
+  );
+  const revalidated = await registry.validateDataset(exportedFile);
+  record(
+    "the exported file reads back as a dataset",
+    revalidated.ok === true && revalidated.report?.dataset?.records === 6,
+    `${revalidated.report?.dataset?.records} records, format ${revalidated.report?.dataset?.format}`,
+  );
+  const exportedCsv = await registry.exportDataset(shards.id, {
+    outputPath: path.join(SANDBOX, "exported-shards.csv"),
+  });
+  record(
+    "a shard folder exports to one flat file of another format",
+    exportedCsv.ok === true && exportedCsv.format === "csv" && exportedCsv.records === 12,
+    exportedCsv.ok ? `${exportedCsv.records} records, fields: ${exportedCsv.fields?.join(", ")}` : exportedCsv.error?.message,
+  );
+  const noDestination = await registry.exportDataset(loose.id, {});
+  record(
+    "exporting without a destination is refused",
+    noDestination.ok === false && noDestination.error?.code === "no_output",
+    noDestination.error?.message,
+  );
+  const badFormat = await registry.exportDataset(loose.id, { outputPath: path.join(SANDBOX, "nope.docx") });
+  record(
+    "an unsupported export format is refused with the supported list",
+    badFormat.ok === false && /jsonl/.test(badFormat.error?.hint || ""),
+    badFormat.error?.message,
+  );
 
   const missing = await registry.importDataset(path.join(SANDBOX, "does-not-exist.jsonl"));
   record("a missing path fails with a clear message", missing.ok === false && missing.error.code === "not_found", missing.error?.message);
@@ -335,6 +505,10 @@ async function main() {
     described.info?.modes.copy.ready === true,
   );
   record(
+    "packing into one file is offered whenever copying is",
+    described.info?.modes.pack?.ready === true,
+  );
+  record(
     "merge is offered but honestly marked unavailable without the runtime",
     described.info?.modes.merge.applicable === true && described.info.modes.merge.ready === false,
     described.info ? `missing: ${described.info.modes.merge.missing.join(", ")}` : undefined,
@@ -380,6 +554,24 @@ async function main() {
 
   const noFolder = await exporter.exportModel({ modelId: trained.id, outputDir: "" });
   record("exporting without a destination is refused", noFolder.ok === false && noFolder.error.code === "no_output");
+
+  // A transformer is several files on disk, so "one file" means one archive.
+  const packedTarget = path.join(SANDBOX, "packed-model.zip");
+  const packed = await exporter.exportModel({ modelId: trained.id, outputDir: packedTarget, pack: true });
+  record(
+    "a model can be exported as one single .zip file",
+    packed.ok === true && packed.archive === true && fs.existsSync(packedTarget),
+    packed.ok ? packed.output_dir : packed.error?.message,
+  );
+  record(
+    "the packed export is a real archive that holds the artefact",
+    fs.readFileSync(packedTarget).subarray(0, 2).toString() === "PK",
+    `${Math.round(fs.statSync(packedTarget).size / 1024)} KB`,
+  );
+  record(
+    "nothing is left unpacked next to the archive",
+    !fs.existsSync(path.join(SANDBOX, "packed-model")),
+  );
 
   /* ------------------------------------------------------------ training */
   section("Training job lifecycle");

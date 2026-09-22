@@ -65,6 +65,7 @@ function register() {
       userData: dirs.root(),
       runsDir: dirs.runs(),
       modelsDir: dirs.models(),
+      datasetsDir: registry.datasetsFolder(),
       hfCacheDir: dirs.hfCache(),
       backendDir: pythonPackageDir(),
       encryptionAvailable: store.encryptionAvailable(),
@@ -88,17 +89,49 @@ function register() {
   }));
 
   /* ------------------------------------------------------------ dialogs */
+
+  // Built from the same list the scanner uses, so the file chooser can never
+  // offer a type the app would then refuse to open.
+  function datasetPickerFilters() {
+    const extensions = registry.supportedExtensions().map((value) => value.replace(".", ""));
+    return [
+      { name: "Datasets (every supported type)", extensions },
+      { name: "Tables (csv, tsv, parquet, sqlite, excel)", extensions: ["csv", "tsv", "tab", "parquet", "pq", "sqlite", "db", "xlsx", "xlsm"] },
+      { name: "Text and JSON", extensions: ["json", "jsonl", "ndjson", "txt", "md", "yaml", "yml"] },
+      { name: "All files", extensions: ["*"] },
+    ];
+  }
+
   ipcMain.handle("zeqou:dialog:dataset", wrap(async () => {
     const result = await dialog.showOpenDialog({
       title: "Import dataset",
       properties: ["openFile", "openDirectory", "multiSelections"],
-      filters: [
-        { name: "Datasets", extensions: ["json", "jsonl", "ndjson", "csv", "tsv", "txt", "parquet"] },
-        { name: "All files", extensions: ["*"] },
-      ],
+      filters: datasetPickerFilters(),
     });
     if (result.canceled || !result.filePaths.length) return { ok: true, paths: [] };
     return ok({ paths: result.filePaths });
+  }));
+
+  // One dataset, one file: the export dialog names the formats the backend can
+  // actually write and returns the exact destination path.
+  ipcMain.handle("zeqou:dialog:saveDataset", wrap(async (payload = {}) => {
+    const format = String(payload.format || "jsonl").toLowerCase();
+    const stem = String(payload.name || "dataset").replace(/[\\/:*?"<>|]+/g, "-").replace(/\.[A-Za-z0-9]+$/, "");
+    const result = await dialog.showSaveDialog({
+      title: payload.title || "Export dataset as one file",
+      defaultPath: `${stem}.${format}`,
+      filters: [
+        { name: "JSON Lines — one record per line (recommended)", extensions: ["jsonl", "ndjson"] },
+        { name: "JSON array", extensions: ["json"] },
+        { name: "CSV", extensions: ["csv"] },
+        { name: "TSV", extensions: ["tsv"] },
+        { name: "Plain text", extensions: ["txt"] },
+        { name: "Parquet", extensions: ["parquet"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return { ok: true, paths: [] };
+    return ok({ paths: [result.filePath], path: result.filePath });
   }));
 
   ipcMain.handle("zeqou:dialog:modelFolder", wrap(async () => {
@@ -313,7 +346,8 @@ function register() {
 
     if (isNew) {
       send({ phase: "output", line: "Creating an isolated environment for the app (your system Python is not touched)…" });
-      const created = await runInstallStep(base.command, [...(base.args || []), "-m", "venv", venvDir], (line) => send({ phase: "output", line }));
+      const start = python.invocation(base);
+    const created = await runInstallStep(start.command, [...start.args, "-m", "venv", venvDir], (line) => send({ phase: "output", line }));
       if (created.code !== 0 || !fs.existsSync(venvPython)) {
         send({ phase: "failed", message: "The virtual environment could not be created." });
         return { ok: false, error: { code: "venv_failed", message: "Could not create the app environment (venv).", hint: (created.stderr || created.stdout).split("\n").slice(-4).join(" ") } };
@@ -414,7 +448,44 @@ function register() {
   }));
 
   /* ------------------------------------------------------------ datasets */
-  ipcMain.handle("zeqou:datasets:list", wrap(() => ok({ datasets: registry.listDatasets() })));
+  ipcMain.handle("zeqou:datasets:list", wrap(() => ok({
+    datasets: registry.listDatasets(),
+    hidden: registry.hiddenDatasets(),
+    folder: registry.datasetsFolder(),
+  })));
+
+  ipcMain.handle("zeqou:datasets:scan", wrap((options) => {
+    const result = registry.scanDatasetsFolder({
+      register: !(options && options.discoverOnly),
+    });
+    emit("zeqou:datasets:changed", { scanned: result.added || 0 });
+    return result;
+  }));
+
+  ipcMain.handle("zeqou:datasets:setFolder", wrap((folder) => {
+    const result = registry.setDatasetsFolder(folder);
+    emit("zeqou:datasets:changed", { folder: result.folder });
+    return result;
+  }));
+
+  ipcMain.handle("zeqou:datasets:formats", wrap(() => registry.datasetFormats()));
+
+  ipcMain.handle("zeqou:datasets:export", wrap((payload) => registry.exportDataset(
+    payload.id || payload.path,
+    {
+      outputPath: payload.outputPath,
+      outputFormat: payload.outputFormat,
+      mapping: payload.mapping,
+      raw: payload.raw,
+      maxRecords: payload.maxRecords,
+    },
+  )));
+
+  ipcMain.handle("zeqou:datasets:restore", wrap((id) => {
+    const result = registry.restoreDataset(id);
+    emit("zeqou:datasets:changed", { restored: id });
+    return result;
+  }));
 
   ipcMain.handle("zeqou:datasets:import", wrap(async (paths) => {
     const list = Array.isArray(paths) ? paths : [paths];
@@ -473,6 +544,21 @@ function register() {
     const result = await exporter.exportModel(payload);
     if (result.ok) emit("zeqou:models:changed", { exported: result.modelId });
     return result;
+  }));
+
+  // A packed export is one .zip file instead of a folder of loose files.
+  ipcMain.handle("zeqou:models:packPath", wrap(async (payload = {}) => {
+    const stem = String(payload.name || "model").replace(/[\\/:*?"<>|]+/g, "-").replace(/\.zip$/i, "");
+    const result = await dialog.showSaveDialog({
+      title: "Export the model as one file",
+      defaultPath: `${stem}.zip`,
+      filters: [
+        { name: "Zip archive", extensions: ["zip"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return { ok: true, paths: [] };
+    return ok({ paths: [result.filePath], path: result.filePath });
   }));
 
   ipcMain.handle("zeqou:models:inspect", wrap(async (payload) => {

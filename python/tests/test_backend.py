@@ -9,6 +9,7 @@ Anything that would need the ML runtime is skipped, not faked.
 
 from __future__ import annotations
 
+import importlib.util as importlib_util
 import io
 import json
 import os
@@ -16,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -310,6 +312,242 @@ def test_huggingface_source() -> None:
           empty["ok"] is False and empty["issues"][0]["code"] == "no_source",
           json.dumps(empty["issues"])[:120])
     check("the no-source error is actionable", bool(empty["issues"][0].get("hint")))
+
+
+def test_format_table() -> None:
+    """The documented extension table is the contract the app offers to the user."""
+    section("Format table")
+    expected = {
+        "data.json": "json",
+        "data.jsonl": "jsonl",
+        "data.ndjson": "jsonl",
+        "data.jsonlines": "jsonl",
+        "data.csv": "csv",
+        "data.psv": "csv",
+        "data.tsv": "tsv",
+        "data.tab": "tsv",
+        "data.txt": "txt",
+        "data.text": "txt",
+        "data.md": "txt",
+        "data.markdown": "txt",
+        "data.parquet": "parquet",
+        "data.pq": "parquet",
+        "data.arrow": "arrow",
+        "data.feather": "arrow",
+        "data.orc": "orc",
+        "data.sqlite": "sqlite",
+        "data.sqlite3": "sqlite",
+        "data.db": "sqlite",
+        "data.xlsx": "excel",
+        "data.xlsm": "excel",
+        "data.xls": "excel",
+        "data.yaml": "yaml",
+        "data.yml": "yaml",
+    }
+    for name, want in expected.items():
+        got = datasets.detect_format(name)
+        check(f"{name} -> {want}", got == want, f"got {got}")
+
+    for name in ("data.jsonl.gz", "shard.ndjson.bz2", "part.csv.xz"):
+        inner = name.split(".")[1]
+        got = datasets.detect_format(name)
+        check(f"{name} is read as {inner}", got == datasets.detect_format(f"x.{inner}"), f"got {got}")
+        check(f"{name} reports its compression", datasets.detect_compression(name) is not None)
+
+    try:
+        datasets.detect_format("data.docx")
+        unsupported = False
+    except datasets.DatasetError as exc:
+        unsupported = exc.code == "unsupported_format" and ".json" in exc.hint
+    check("an unsupported extension names the supported ones", unsupported)
+
+    try:
+        datasets.detect_format("archive.gz")
+        ambiguous = False
+    except datasets.DatasetError as exc:
+        ambiguous = exc.code == "unsupported_format" and "inner extension" in exc.hint
+    check("a compressed file without an inner extension says how to name it", ambiguous)
+
+    info = datasets.supported_formats()
+    check("every format id is described", len(info["formats"]) == len(datasets.FORMAT_INFO))
+    check("extensions are reported for the UI", ".parquet" in info["extensions"], str(info["extensions"]))
+    check("compression codecs are reported", ".gz" in info["compression"], str(info["compression"]))
+    check("export formats are reported", "jsonl" in info["export_formats"])
+    check("availability is probed, not assumed",
+          all(isinstance(f["available"], bool) for f in info["formats"]))
+    check("an unavailable reader carries an install hint",
+          all(f["hint"] or f["available"] for f in info["formats"]),
+          str([f for f in info["formats"] if not f["available"]][:2]))
+    check("stdlib formats are always available",
+          all(f["available"] for f in info["formats"] if f["requires"] is None))
+
+
+def test_extra_formats() -> None:
+    """Formats that need real files are exercised from a throwaway folder."""
+    section("Additional formats (tsv, gzip, markdown, sqlite)")
+    import gzip
+    import sqlite3
+
+    rows = [{"instruction": f"question {i}", "output": f"answer {i}"} for i in range(6)]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+
+        (root / "pairs.tsv").write_text(
+            "instruction\toutput\n" + "\n".join(f"{r['instruction']}\t{r['output']}" for r in rows),
+            encoding="utf-8",
+        )
+        tsv = datasets.validate(str(root / "pairs.tsv"), context_length=512)
+        check("a .tsv file is read as tab separated",
+              tsv["dataset"]["records"] == 6 and tsv["dataset"]["format"] == "tsv",
+              json.dumps(tsv["dataset"])[:120])
+        check("tsv columns are mapped like csv", tsv["mapping"]["kind"] == "pair",
+              json.dumps(tsv["mapping"]))
+
+        (root / "shard-01.jsonl.gz").write_bytes(gzip.compress(
+            "\n".join(json.dumps(r) for r in rows).encode("utf-8")
+        ))
+        gz = datasets.validate(str(root / "shard-01.jsonl.gz"), context_length=512)
+        check("a gzipped JSONL file is decompressed transparently",
+              gz["dataset"]["records"] == 6, str(gz["dataset"]["records"]))
+        check("the report names the compression", gz["dataset"]["compression"] == "gzip")
+        check("the inner format is reported", gz["dataset"]["format"] == "jsonl")
+
+        gold = datasets.export_dataset(str(root / "shard-01.jsonl.gz"), output=str(root / "plain.jsonl"))
+        check("a compressed source exports to a plain single file",
+              gold["format"] == "jsonl" and Path(gold["output"]).exists(), json.dumps(gold)[:120])
+
+        (root / "broken.jsonl.gz").write_bytes(b"this is not gzip at all")
+        broken = datasets.validate(str(root / "broken.jsonl.gz"))
+        check("a corrupt gzip file is reported as such",
+              broken["issues"][0]["code"] == "bad_compression", broken["issues"][0]["message"])
+
+        (root / "notes.md").write_text("First paragraph.\n\nSecond paragraph.\n", encoding="utf-8")
+        md = datasets.validate(str(root / "notes.md"), context_length=512)
+        check("markdown is read as text", md["dataset"]["format"] == "txt" and md["stats"]["records"] == 2,
+              json.dumps(md["dataset"])[:120])
+
+        connection = sqlite3.connect(root / "pairs.db")
+        connection.execute("CREATE TABLE pairs (instruction TEXT, output TEXT)")
+        connection.execute("CREATE TABLE small (x INTEGER)")
+        connection.executemany("INSERT INTO pairs VALUES (?, ?)",
+                               [(r["instruction"], r["output"]) for r in rows])
+        connection.execute("INSERT INTO small VALUES (1)")
+        connection.commit()
+        connection.close()
+
+        db = datasets.validate(str(root / "pairs.db"), context_length=512)
+        check("a sqlite database is read without extra packages",
+              db["dataset"]["records"] == 6, json.dumps(db["dataset"])[:160])
+        check("the largest table is chosen", db["dataset"]["items"] == "pairs",
+              str(db["dataset"].get("items")))
+        check("sqlite columns map like any table", db["mapping"]["kind"] == "pair")
+
+        empty_db = root / "empty.db"
+        sqlite3.connect(empty_db).close()
+        empty = datasets.validate(str(empty_db))
+        check("a database with no tables is a clean error", empty["issues"][0]["code"] == "empty",
+              str(empty["issues"][0]))
+
+        (root / "pairs.yaml").write_text(
+            "\n".join(
+                f"- instruction: {r['instruction']}\n  output: {r['output']}" for r in rows
+            ),
+            encoding="utf-8",
+        )
+        yml = datasets.validate(str(root / "pairs.yaml"), context_length=512)
+        if importlib_util.find_spec("yaml") is not None:
+            check("yaml records are read", yml["dataset"]["records"] == 6, str(yml["dataset"]["records"]))
+        else:
+            yml_issue = yml["issues"][0]
+            check("yaml without pyyaml is an honest missing dependency",
+                  yml_issue["code"] == "missing_dependency" and "pip install pyyaml" in yml_issue["hint"],
+                  json.dumps(yml_issue)[:110])
+
+
+def test_single_file_export() -> None:
+    section("Single-file export")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source_records, _source_meta = datasets.load_records(str(FIXTURES / "good.jsonl"))
+        source_texts = [
+            sample["text"] for sample in datasets.normalize(
+                source_records, datasets.detect_mapping(source_records)
+            )
+        ]
+
+        for fmt in ("jsonl", "json", "csv", "tsv", "txt"):
+            workdir = root / fmt
+            workdir.mkdir()
+            target = workdir / f"out.{fmt}"
+            result = datasets.export_dataset(str(FIXTURES / "good.jsonl"), output=str(target))
+            written = sorted(p.name for p in workdir.iterdir())
+            check(f"{fmt}: exactly one file is written",
+                  written == [target.name] and result["output"] == str(target), str(written))
+            check(f"{fmt}: the export reports the format it wrote", result["format"] == fmt, result["format"])
+            check(f"{fmt}: every source record is exported", result["records"] == 6, str(result["records"]))
+            reloaded = datasets.validate(str(target), context_length=512)
+            if fmt == "txt":
+                # A blank line is the only record boundary plain text has, so the
+                # record count can differ. No content may be lost, though.
+                content = target.read_text(encoding="utf-8")
+                check("txt: every sample survives the export",
+                      all(text in content for text in source_texts),
+                      f"{len(source_texts)} samples written")
+            else:
+                check(f"{fmt}: the exported file reads back as a dataset",
+                      reloaded["dataset"]["records"] == 6, json.dumps(reloaded["dataset"])[:120])
+            check(f"{fmt}: the export is readable as {fmt}",
+                  reloaded["dataset"]["format"] == fmt, reloaded["dataset"]["format"])
+
+        # A folder of shards becomes one file, which is the whole point.
+        merged = datasets.export_dataset(str(FIXTURES / "folder_clean"), output=str(root / "merged.jsonl"))
+        check("a shard folder exports to a single file",
+              merged["records"] == 12 and merged["source"]["files"], json.dumps(merged)[:140])
+        check("the export keeps the mapping it used", merged["mapping"]["kind"] == "pair")
+        check("exports are normalised by default", merged["mode"] == "normalised")
+
+        raw = datasets.export_dataset(str(FIXTURES / "good.jsonl"), output=str(root / "raw.jsonl"), raw=True)
+        check("raw mode keeps the original fields", "instruction" in raw["fields"], str(raw["fields"]))
+
+        try:
+            datasets.export_dataset(str(FIXTURES / "good.jsonl"), output=str(root / "merged.jsonl"))
+            refused = False
+        except datasets.DatasetError as exc:
+            refused = exc.code == "exists"
+        check("exporting over an existing file is refused, not silently merged", refused)
+
+        again = datasets.export_dataset(str(FIXTURES / "good.jsonl"), output=str(root / "merged.jsonl"),
+                                        overwrite=True)
+        check("overwriting is possible when explicitly allowed",
+              again["records"] == 6, json.dumps(again)[:100])
+
+        try:
+            datasets.export_dataset(str(FIXTURES / "good.jsonl"), output="")
+            no_output = False
+        except datasets.DatasetError as exc:
+            no_output = exc.code == "no_output"
+        check("exporting without a destination is refused", no_output)
+
+        try:
+            datasets.export_dataset(str(FIXTURES / "good.jsonl"), output=str(root / "out.docx"))
+            bad_format = False
+        except datasets.DatasetError as exc:
+            bad_format = exc.code == "unsupported_format" and "jsonl" in exc.hint
+        check("an unsupported export format lists the supported ones", bad_format)
+
+        if importlib_util.find_spec("pyarrow") is None:
+            try:
+                datasets.export_dataset(str(FIXTURES / "good.jsonl"), output=str(root / "out.parquet"))
+                parquet = None
+            except datasets.DatasetError as exc:
+                parquet = exc
+            check("parquet without pyarrow is refused with an install hint",
+                  parquet is not None and parquet.code == "missing_dependency"
+                  and "pip install pyarrow" in parquet.hint,
+                  parquet.message if parquet else "no error")
+            check("the refused parquet export left no file behind",
+                  not (root / "out.parquet").exists())
 
 
 def test_mapping_override() -> None:
@@ -629,6 +867,26 @@ def test_exporter() -> None:
         check("the card is honest that the base model is not included",
               "The base model is not included" in readme)
 
+        # ---- packed into one file --------------------------------------
+        archive_target = root / "packed.zip"
+        packed = exporter.export(source, archive_target, pack=True, metadata={"name": "demo-run"})
+        check("a packed export reports itself as an archive",
+              packed["archive"] is True and packed["mode"] == "copy", json.dumps(packed)[:110])
+        check("a packed export is exactly one file",
+              archive_target.exists() and archive_target.is_file())
+        with zipfile.ZipFile(archive_target) as archive:
+            names = sorted(archive.namelist())
+            readme_txt = archive.read("README.md").decode("utf-8")
+        check("the archive holds the weights and the config",
+              "adapter_model.safetensors" in names and "adapter_config.json" in names, str(names))
+        check("the archive carries the manifest and the card",
+              "export.json" in names and "README.md" in names, str(names))
+        check("checkpoint folders are not packed",
+              not any(name.startswith("checkpoint-20") for name in names), str(names))
+        check("the packed card explains how to unpack it", "unzip" in readme_txt, readme_txt[-160:])
+        check("packing a folder name still produces one .zip",
+              exporter.export(source, root / "named", pack=True)["output_dir"].endswith("named.zip"))
+
         # ---- refusals --------------------------------------------------
         try:
             exporter.export(source, target)
@@ -668,6 +926,58 @@ def test_exporter() -> None:
               info_err["message"] == "Disk is full." and info_err["code"] == "disk_full",
               json.dumps(info_err)[:120])
         check("export error hints survive", info_err["hint"] == "Free some space.")
+
+
+def test_scratch_export_card() -> None:
+    """Models that own every weight must not be described as adapters.
+
+    A from-scratch run and a full fine-tune have no adapter to load on top of a
+    base model, and a from-scratch run additionally carries the character-level
+    tokenizer it learned — the exported card has to explain both, otherwise the
+    folder looks broken to whoever opens it.
+    """
+    section("Export card for models without an adapter")
+    from zeqouxtraining import exporter
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        scratch = root / "scratch-run"
+        scratch.mkdir()
+        (scratch / "config.json").write_text(json.dumps({"model_type": "llama"}), encoding="utf-8")
+        (scratch / "model.safetensors").write_bytes(b"0" * 4096)
+        (scratch / "zeqou_tokenizer.json").write_text(json.dumps({
+            "tokenizer_class": "ZeqouCharTokenizer",
+            "model_type": "char-level",
+            "vocab": ["<pad>", "<unk>", "<bos>", "<eos>", "a", "b", " "],
+        }), encoding="utf-8")
+
+        info = exporter.describe(scratch)
+        check("a from-scratch folder is not mistaken for an adapter", info["is_adapter"] is False)
+        check("its weights are found",
+              info["weight_files"] == ["model.safetensors"], str(info["weight_files"]))
+
+        target = root / "exported-scratch"
+        exporter.export(scratch, target, metadata={"name": "scratch-run", "method": "scratch"})
+        readme = (target / "README.md").read_text(encoding="utf-8")
+        check("the card calls it a standalone model", "standalone model" in readme, readme[-400:])
+        check("the card never tells anyone to load an adapter", "PeftModel" not in readme)
+        check("the card shows how to read the learned vocabulary",
+              "vocab = json.load" in readme, readme[-400:])
+        check("the exported folder keeps the character tokenizer",
+              (target / "zeqou_tokenizer.json").exists())
+
+        # A full fine-tune is standalone as well, but brings no learned vocab.
+        full = root / "full-run"
+        full.mkdir()
+        (full / "config.json").write_text(json.dumps({"model_type": "llama"}), encoding="utf-8")
+        (full / "model.safetensors").write_bytes(b"0" * 4096)
+        full_target = root / "exported-full"
+        exporter.export(full, full_target, metadata={"name": "full-run", "method": "full"})
+        full_readme = (full_target / "README.md").read_text(encoding="utf-8")
+        check("a full fine-tune is described as standalone too",
+              "standalone model" in full_readme, full_readme[-400:])
+        check("no tokenizer section is invented for it",
+              "vocab = json.load" not in full_readme, full_readme[-400:])
 
 
 def test_cli_protocol() -> None:
@@ -793,8 +1103,11 @@ def main() -> int:
     test_missing_file()
     test_chat_dataset()
     test_csv_and_txt()
+    test_format_table()
+    test_extra_formats()
     test_folder_dataset()
     test_huggingface_source()
+    test_single_file_export()
     test_mapping_override()
     test_config_normalisation()
     test_config_validation()
@@ -805,6 +1118,7 @@ def main() -> int:
     test_checkpoints()
     test_error_humanizing()
     test_exporter()
+    test_scratch_export_card()
     test_cli_protocol()
     test_scratch_backend()
 

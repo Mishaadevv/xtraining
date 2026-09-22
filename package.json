@@ -1,7 +1,7 @@
 {
   "name": "zeqouxtraining",
   "productName": "ZeqouXTraining",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ZeqouXTraining — desktop workspace for fine-tuning and training AI models",
   "main": "electron/main.js",
   "author": "Zeqou <misakolot6@gmail.com>",
@@ -9,12 +9,16 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "tsc --noEmit && vite build",
+    "dev:web": "vite",
+    "build": "tsc --noEmit && node scripts/check-js.mjs && vite build",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit",
+    "check:js": "node scripts/check-js.mjs",
     "test:py": "cd python && python tests/test_backend.py",
     "smoke": "electron scripts/smoke.js",
-    "verify": "npm run typecheck && npm run test:py && npm run smoke",
+    "probe:ui": "electron scripts/ui-probe.js",
+    "selftest": "electron . --self-test",
+    "verify": "npm run typecheck && npm run check:js && npm run test:py && npm run smoke",
     "py:check": "cd python && python -m zeqouxtraining.cli env-check",
     "pack": "electron-builder --dir --publish never",
     "dist": "npm run build && electron-builder --publish never"
@@ -88,18 +92,14 @@
     "files": [
       "electron/**/*",
       "dist/**/*",
-      "python/**/*",
       "ico.png",
+      "public/**/*",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "python",
         "to": "python"
-      },
-      {
-        "from": "datasets",
-        "to": "datasets"
       }
     ]
   }

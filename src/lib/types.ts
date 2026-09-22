@@ -130,11 +130,16 @@ export interface DatasetReport {
     mixed_shapes?: { fields: string[]; files: string[] }[];
     container_key?: string | null;
     truncated?: boolean;
+    /** Compression codec when the file was read through gzip/bz2/xz. */
+    compression?: string | null;
+    /** The table or sheet that was read, for sqlite and spreadsheets. */
+    items?: string | null;
   };
   stats: {
     records?: number;
     usable?: number;
     unusable?: number;
+    empty?: number;
     duplicates?: number;
     over_length?: number;
     very_short?: number;
@@ -170,12 +175,33 @@ export interface DatasetEntry {
   mapping: DatasetMapping | null;
   issues: ValidationIssue[];
   report: DatasetReport | null;
-  /** Ships with the app; cannot be removed, report lives in memory. */
-  builtin?: boolean;
-  /** The built-in used when no dataset has been selected. */
-  default?: boolean;
-  lang?: string | null;
-  thinking?: boolean;
+  /** Where the entry came from: the scanned folder, a manual import, or the Hub. */
+  origin?: "folder" | "import" | "hub";
+  /** The folder this entry was found in, when it came from a scan. */
+  folder?: string | null;
+  /** Scanned datasets the user removed from the list stay hidden, not deleted. */
+  hidden?: boolean;
+}
+
+/** One dataset type the backend can read (reported by `dataset-formats`). */
+export interface DatasetFormatInfo {
+  id: string;
+  label: string;
+  requires: string | null;
+  available: boolean;
+  hint: string;
+  extensions: string[];
+}
+
+export interface DatasetFormats {
+  ok?: boolean;
+  error?: BackendError;
+  formats: DatasetFormatInfo[];
+  extensions: string[];
+  compression: string[];
+  export_formats: string[];
+  sources?: string[];
+  hub_available?: boolean;
 }
 
 /* ----------------------------------------------------------------- models */
@@ -232,6 +258,8 @@ export interface ModelExportInfo {
   size_bytes: number;
   modes: {
     copy: { ready: boolean };
+    /** A packed export is the same content as one .zip file. */
+    pack?: { ready: boolean };
     merge: { ready: boolean; applicable: boolean; missing: string[] };
   };
   blockers: { code: string; message: string; hint: string }[];
@@ -522,6 +550,8 @@ export interface Settings {
   interpreterPath: string | null;
   cudaWheelTag: string;
   hfCacheDir: string | null;
+  /** The folder scanned for datasets; null means the app's own folder. */
+  datasetsDir: string | null;
   theme: "dark" | "light";
   /** Off => the wizard uses the documented defaults and says so. */
   autoConfigure: boolean;
@@ -552,6 +582,7 @@ export interface AppInfo {
   userData: string;
   runsDir: string;
   modelsDir: string;
+  datasetsDir: string;
   hfCacheDir: string;
   backendDir: string;
   encryptionAvailable: boolean;

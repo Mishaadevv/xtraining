@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld("zeqou", {
     pickModelFolder: () => ipcRenderer.invoke("zeqou:dialog:modelFolder"),
     pickPython: () => ipcRenderer.invoke("zeqou:dialog:python"),
     pickDirectory: (title) => ipcRenderer.invoke("zeqou:dialog:directory", title),
+    saveDataset: (payload) => ipcRenderer.invoke("zeqou:dialog:saveDataset", payload),
   },
 
   settings: {
@@ -97,6 +98,11 @@ contextBridge.exposeInMainWorld("zeqou", {
     validate: (payload) => ipcRenderer.invoke("zeqou:datasets:validate", payload),
     preview: (payload) => ipcRenderer.invoke("zeqou:datasets:preview", payload),
     remove: (id) => ipcRenderer.invoke("zeqou:datasets:remove", id),
+    restore: (id) => ipcRenderer.invoke("zeqou:datasets:restore", id),
+    scan: (options) => ipcRenderer.invoke("zeqou:datasets:scan", options || {}),
+    setFolder: (folder) => ipcRenderer.invoke("zeqou:datasets:setFolder", folder),
+    formats: () => ipcRenderer.invoke("zeqou:datasets:formats"),
+    export: (payload) => ipcRenderer.invoke("zeqou:datasets:export", payload),
   },
 
   models: {
@@ -105,6 +111,7 @@ contextBridge.exposeInMainWorld("zeqou", {
     inspect: (source) => ipcRenderer.invoke("zeqou:models:inspect", { source }),
     exportInfo: (payload) => ipcRenderer.invoke("zeqou:models:exportInfo", payload),
     export: (payload) => ipcRenderer.invoke("zeqou:models:export", payload),
+    packPath: (payload) => ipcRenderer.invoke("zeqou:models:packPath", payload),
     remove: (id) => ipcRenderer.invoke("zeqou:models:remove", id),
   },
 

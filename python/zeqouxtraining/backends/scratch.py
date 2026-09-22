@@ -53,58 +53,183 @@ def resolve_architecture(config: dict[str, Any]) -> dict[str, int]:
     return preset
 
 
+#: The special tokens every character vocabulary starts with. The count matters:
+#: a vocabulary learned from data begins after these, and `decode` skips exactly
+#: the tokens written as `<...>`.
+SPECIAL_TOKENS = ("<pad>", "<unk>", "<bos>", "<eos>")
+#: File the tokenizer is written to — deliberately not `tokenizer.json`, so a
+#: scratch model keeps working while `transformers` never mistakes it for one of
+#: its own tokenizers.
+TOKENIZER_FILE = "zeqou_tokenizer.json"
+
+
 class CharTokenizer:
     """A minimal character-level tokenizer.
 
     Used only when the run has no usable tokenizer (which is the normal case
-    when training from scratch). It is deterministic, needs no downloads, and
-    pads with id 0 while keeping the loss masked through the collator.
+    when training from scratch). It is deterministic and needs no downloads: the
+    vocabulary is the most common characters of the dataset itself.
+
+    It stands in for a real tokenizer everywhere the app needs one, including
+    inference, so a model trained from scratch can actually be talked to in the
+    Playground instead of only being saved.
     """
 
-    def __init__(self, texts: list[str], vocab_size: int):
+    def __init__(self, texts: list[str] | None = None, vocab_size: int = 0, itos: list[str] | None = None):
+        if itos is not None:
+            self._init_vocab([str(token) for token in itos])
+            return
         counts: Counter[str] = Counter()
-        for text in texts:
+        for text in texts or []:
             counts.update(text)
         # Most common characters first; the rest map to <unk>.
-        common = [char for char, _ in counts.most_common(max(1, vocab_size - 3))]
-        self.itos = ["<pad>", "<unk>", "<bos>", *common]
-        self.stoi = {char: index for index, char in enumerate(self.itos)}
+        room = max(1, int(vocab_size) - len(SPECIAL_TOKENS))
+        common = [char for char, _ in counts.most_common(room)]
+        self._init_vocab([*SPECIAL_TOKENS, *common])
+
+    def _init_vocab(self, itos: list[str]) -> None:
+        # A vocabulary missing the specials (an older run) is still usable.
+        for token in reversed(SPECIAL_TOKENS):
+            if token not in itos:
+                itos.insert(0, token)
+        self.itos = itos
+        self.stoi = {token: index for index, token in enumerate(self.itos)}
         self.pad_token = "<pad>"
         self.unk_token = "<unk>"
         self.bos_token = "<bos>"
-        self.eos_token = None
+        self.eos_token = "<eos>"
         self.name = "zeqou-char-level"
         self.vocab_size = len(self.itos)
         self.chat_template = None
 
-    def __call__(self, texts: list[str], truncation: bool = False, max_length: int | None = None):
-        ids: list[list[int]] = []
+    # The ids the generation loop reads off the tokenizer.
+    @property
+    def pad_token_id(self) -> int:
+        return self.stoi[self.pad_token]
+
+    @property
+    def unk_token_id(self) -> int:
+        return self.stoi[self.unk_token]
+
+    @property
+    def bos_token_id(self) -> int:
+        return self.stoi[self.bos_token]
+
+    @property
+    def eos_token_id(self) -> int:
+        return self.stoi[self.eos_token]
+
+    @property
+    def eos_token(self) -> str:
+        return self._eos_token
+
+    @eos_token.setter
+    def eos_token(self, value: str) -> None:
+        # `transformers` assigns this while loading; the vocabulary decides the id
+        # and an unknown value (None) is simply ignored.
+        if value and value in self.stoi:
+            self._eos_token = value
+        elif not hasattr(self, "_eos_token"):
+            self._eos_token = "<eos>"
+
+    def __call__(
+        self,
+        texts: str | list[str],
+        truncation: bool = False,
+        max_length: int | None = None,
+        return_tensors: str | None = None,
+        padding: bool | str = False,
+        **_ignored: Any,
+    ) -> dict[str, Any]:
+        if isinstance(texts, str):
+            texts = [texts]
+        rows: list[list[int]] = []
         for text in texts:
-            row = [self.stoi.get(char, 1) for char in text]
+            row = [self.stoi.get(char, self.unk_token_id) for char in str(text)]
             if max_length and truncation:
                 row = row[:max_length]
-            ids.append(row)
-        return {"input_ids": ids}
+            rows.append(row)
 
+        if return_tensors is None:
+            return {"input_ids": rows}
+        return self._tensors(rows)
+
+    def _tensors(self, rows: list[list[int]]) -> dict[str, Any]:
+        """Padded `input_ids` plus a matching attention mask."""
+        try:
+            import torch  # noqa: PLC0415 - only inference needs tensors
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "Tensor input needs PyTorch. Install the ML runtime in Settings → Environment."
+            ) from exc
+
+        width = max(1, max((len(row) for row in rows), default=1))
+        ids = [row + [self.pad_token_id] * (width - len(row)) for row in rows]
+        mask = [[1] * len(row) + [0] * (width - len(row)) for row in rows]
+        return {
+            "input_ids": torch.tensor(ids, dtype=torch.long),
+            "attention_mask": torch.tensor(mask, dtype=torch.long),
+        }
+
+    # ------------------------------------------------------------- persistence
     def save_pretrained(self, directory: str) -> None:
-        Path(directory).mkdir(parents=True, exist_ok=True)
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
         payload = {
             "tokenizer_class": "ZeqouCharTokenizer",
             "model_type": "char-level",
             "vocab": self.itos,
         }
-        (Path(directory) / "zeqou_tokenizer.json").write_text(
+        (target / TOKENIZER_FILE).write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        # Reference copies: other tools can read the plain character -> id map,
+        # and the config says out loud which tokenizer this folder holds.
+        (target / "vocab.json").write_text(
+            json.dumps(self.stoi, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (target / "tokenizer_config.json").write_text(
+            json.dumps({
+                "tokenizer_class": "ZeqouCharTokenizer",
+                "model_type": "char-level",
+                "vocab_file": TOKENIZER_FILE,
+                "pad_token": self.pad_token,
+                "eos_token": self.eos_token,
+                "unk_token": self.unk_token,
+                "bos_token": self.bos_token,
+                "model_max_length": 1024,
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def has_vocab(cls, directory: str | Path) -> bool:
+        """True when a folder holds a character vocabulary written by this class."""
+        return (Path(directory) / TOKENIZER_FILE).is_file()
+
+    @classmethod
+    def load_from_dir(cls, directory: str | Path) -> "CharTokenizer":
+        """Rebuild the tokenizer saved next to a from-scratch run."""
+        source = Path(directory) / TOKENIZER_FILE
+        if not source.is_file():
+            raise FileNotFoundError(f"No character tokenizer found at {source}.")
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"'{source.name}' could not be read: {exc}") from exc
+        itos = [str(token) for token in (payload.get("vocab") or [])]
+        if not itos:
+            raise ValueError(f"'{source.name}' contains no vocabulary.")
+        return cls(itos=itos)
 
     def decode(self, ids: list[int], skip_special_tokens: bool = True) -> str:
-        specials = {"<pad>", "<unk>", "<bos>"}
         out: list[str] = []
         for index in ids:
+            index = int(index)
             if index < 0 or index >= len(self.itos):
                 continue
             token = self.itos[index]
-            if skip_special_tokens and token in specials:
+            if skip_special_tokens and token.startswith("<") and token.endswith(">"):
                 continue
             out.append(token)
         return "".join(out)
@@ -242,7 +367,12 @@ class ScratchBackend(TrainingBackend):
         raw = Dataset.from_dict({"text": texts})
 
         def tokenize(batch: dict[str, list[str]]) -> dict[str, Any]:
-            return tokenizer(batch["text"], truncation=True, max_length=context_length)
+            encoded = tokenizer(batch["text"], truncation=True, max_length=context_length)
+            # Close every sample with <eos> so generation has somewhere to stop.
+            eos_id = getattr(tokenizer, "eos_token_id", None)
+            if isinstance(eos_id, int):
+                encoded["input_ids"] = [[*row, eos_id] for row in encoded["input_ids"]]
+            return encoded
 
         tokenized = raw.map(tokenize, batched=True, remove_columns=["text"])
         tokenized = tokenized.filter(lambda row: len(row["input_ids"]) > 1)

@@ -43,6 +43,7 @@ import { cn, formatBytes } from "@/lib/utils";
 import { useStore } from "@/state/store";
 import {
   appStore,
+  chooseDatasetsFolder,
   discoverInterpreters,
   installRuntime,
   navigate,
@@ -50,7 +51,9 @@ import {
   refreshEnv,
   resetSettings,
   saveHfToken,
+  scanDatasets,
   selectInterpreter,
+  setDatasetsFolder,
   updateSettings,
 } from "@/state/appStore";
 import { bridge, isDesktop } from "@/lib/bridge";
@@ -216,7 +219,38 @@ export function SettingsPage() {
             icon={<Download className="h-4 w-4" />}
             title="ML runtime packages"
             description="Training and inference need these. Diagnostics and dataset validation work without them."
+            actions={
+              <Button
+                size="sm"
+                variant={trainingReady ? "quiet" : "primary"}
+                icon={<Download className="h-3.5 w-3.5" />}
+                loading={runtimeInstall.running}
+                onClick={() => void installRuntime()}
+                disabled={!plan && !trainingReady}
+              >
+                {runtimeInstall.running ? "Installing…" : trainingReady ? "Reinstall ML runtime" : "Install ML runtime"}
+              </Button>
+            }
           />
+
+          {trainingReady && !runtimeInstall.running && runtimeInstall.lines.length === 0 ? (
+            <div className="mb-4">
+              <Note tone="good" title="The ML runtime is ready">
+                <p>
+                  Training and inference can start right away. Reinstall only when an update asks you to,
+                  or when you changed the CUDA wheel tag below.
+                </p>
+              </Note>
+            </div>
+          ) : null}
+
+          {!plan && !trainingReady ? (
+            <div className="mb-4">
+              <Note tone="info" title="Building the install plan…">
+                <p>The app is checking this machine. If nothing appears, press Rebuild command below.</p>
+              </Note>
+            </div>
+          ) : null}
 
           {plan && !trainingReady ? (
             <div className="mb-4">
@@ -467,6 +501,7 @@ export function SettingsPage() {
                 { label: "App data", value: appInfo?.userData as string },
                 { label: "Runs and checkpoints", value: appInfo?.runsDir as string },
                 { label: "Trained models", value: appInfo?.modelsDir as string },
+                { label: "Datasets folder", value: appInfo?.datasetsDir as string },
                 { label: "Python backend", value: appInfo?.backendDir as string },
               ].map((entry) => (
                 <div
@@ -487,6 +522,49 @@ export function SettingsPage() {
               <Database className="mt-[3px] h-3 w-3 shrink-0" />
               Datasets are referenced in place and never copied, so importing a large file costs no disk space.
             </p>
+          </Panel>
+
+          {/* --------------------------------------------------------- datasets */}
+          <Panel>
+            <PanelHeader
+              icon={<Database className="h-4 w-4" />}
+              title="Datasets folder"
+              description="Scanned automatically: every supported file in it appears under Datasets."
+            />
+            <Field
+              label="Folder the app scans"
+              hint="Leave empty to use the app's own folder. Subfolders full of shards are listed as one dataset."
+            >
+              <div className="flex gap-2">
+                <Input
+                  value={(settings?.datasetsDir as string) ?? ""}
+                  placeholder={appInfo?.datasetsDir ?? "App folder"}
+                  spellCheck={false}
+                  onChange={(event) => void updateSettings({ datasetsDir: event.target.value || null })}
+                />
+                <Button variant="secondary" onClick={() => void chooseDatasetsFolder()}>
+                  Browse
+                </Button>
+                <Button
+                  variant="quiet"
+                  icon={<RefreshCw className="h-3.5 w-3.5" />}
+                  onClick={() => void scanDatasets()}
+                >
+                  Scan
+                </Button>
+              </div>
+            </Field>
+            <div className="mt-3 flex items-center gap-2 border-t border-[var(--border-soft)] pt-3">
+              <Button variant="ghost" onClick={() => void setDatasetsFolder(null)}>
+                Use the app's own folder
+              </Button>
+              <IconButton
+                title="Open the scanned folder"
+                onClick={() => void openPath((settings?.datasetsDir as string) ?? appInfo?.datasetsDir)}
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+              </IconButton>
+            </div>
           </Panel>
 
           {/* ------------------------------------------------------ appearance */}

@@ -20,6 +20,8 @@ const SETTINGS_DEFAULTS = {
   interpreterPath: null,
   cudaWheelTag: "cu124",
   hfCacheDir: null,
+  // null => the app's own folder under userData is scanned for datasets.
+  datasetsDir: null,
   theme: "dark",
   // Off => the wizard uses the documented defaults and says so.
   autoConfigure: true,

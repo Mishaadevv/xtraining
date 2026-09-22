@@ -4,7 +4,9 @@ The desktop app drives the backend through this module:
 
     python -m zeqouxtraining.cli env-check
     python -m zeqouxtraining.cli hardware
+    python -m zeqouxtraining.cli dataset-formats
     python -m zeqouxtraining.cli validate-dataset --path ... --context-length 512
+    python -m zeqouxtraining.cli export-dataset --path ... --output dataset.jsonl
     python -m zeqouxtraining.cli inspect-model --source ...
     python -m zeqouxtraining.cli auto-config --base-model ... --dataset-path ...
     python -m zeqouxtraining.cli train --job <job.json>
@@ -114,6 +116,38 @@ def cmd_validate_dataset(args: argparse.Namespace) -> int:
         )
 
     return _guard(run, "validate-dataset")
+
+
+def cmd_dataset_formats(_args: argparse.Namespace) -> int:
+    from .datasets import supported_formats
+
+    events.result(supported_formats())
+    return 0
+
+
+def cmd_export_dataset(args: argparse.Namespace) -> int:
+    """Write a dataset — file, folder or Hub id — as one single file."""
+    def run() -> dict[str, Any]:
+        from .datasets import export_dataset
+
+        def progress(message: str, index: int, total: int) -> None:
+            events.emit("dataset-progress", {"message": message, "index": index, "total": total})
+
+        return export_dataset(
+            args.path,
+            hf_id=args.hf_id,
+            split=args.split,
+            fmt=args.format,
+            output=args.output,
+            output_format=args.out_format,
+            mapping=_json_arg(args.mapping),
+            raw=args.raw,
+            max_records=args.limit,
+            overwrite=args.overwrite,
+            progress=progress,
+        )
+
+    return _guard(run, "export-dataset")
 
 
 def cmd_preview_dataset(args: argparse.Namespace) -> int:
@@ -241,6 +275,7 @@ def cmd_export(args: argparse.Namespace) -> int:
             merge=args.merge,
             base_model=args.base_model,
             metadata=_json_arg(args.metadata),
+            pack=args.pack,
         )
 
     return _guard(run, "export")
@@ -311,11 +346,31 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--path", default=None, help="Local file or folder of shards")
     validate.add_argument("--hf-id", default=None, help="Hugging Face dataset id, e.g. tatsu-lab/alpaca")
     validate.add_argument("--split", default="train", help="Split used when --hf-id is given")
-    validate.add_argument("--format", default="auto")
+    validate.add_argument("--format", default="auto", help="Force a format instead of detecting it")
     validate.add_argument("--mapping", default=None, help="JSON field mapping")
     validate.add_argument("--context-length", type=int, default=512)
     validate.add_argument("--max-records", type=int, default=20000)
     validate.add_argument("--preview", type=int, default=8)
+
+    sub.add_parser("dataset-formats", help="List every dataset type this install can read")
+
+    export_dataset = sub.add_parser(
+        "export-dataset",
+        help="Write a dataset as one single file (JSONL, JSON, CSV, TSV, TXT or Parquet)",
+    )
+    export_dataset.add_argument("--path", default=None, help="Local file or folder of shards")
+    export_dataset.add_argument("--hf-id", default=None, help="Hugging Face dataset id")
+    export_dataset.add_argument("--split", default="train", help="Split used when --hf-id is given")
+    export_dataset.add_argument("--format", default="auto", help="Format of the source")
+    export_dataset.add_argument("--output", required=True, help="Destination file (one file only)")
+    export_dataset.add_argument("--out-format", default=None,
+                                help="Override the format instead of taking it from the file name")
+    export_dataset.add_argument("--mapping", default=None, help="JSON field mapping")
+    export_dataset.add_argument("--raw", action="store_true",
+                                help="Keep the original records instead of the normalised samples")
+    export_dataset.add_argument("--limit", type=int, default=200000)
+    export_dataset.add_argument("--overwrite", action="store_true",
+                                help="Replace the destination file if it already exists")
 
     preview = sub.add_parser("preview-dataset", help="Show the first normalised samples")
     preview.add_argument("--path", default=None, help="Local file or folder of shards")
@@ -349,6 +404,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Fold the adapter into the base model (needs torch + peft)")
     export.add_argument("--base-model", default=None, help="Override the base model id")
     export.add_argument("--metadata", default=None, help="JSON run metadata for provenance")
+    export.add_argument("--pack", action="store_true",
+                        help="Write one single .zip file instead of a folder of files")
     export.add_argument("--describe", action="store_true",
                         help="Report what this folder holds instead of exporting")
 
@@ -371,8 +428,10 @@ HANDLERS = {
     "hardware": cmd_hardware,
     "backends": cmd_backends,
     "install-plan": cmd_install_plan,
+    "dataset-formats": cmd_dataset_formats,
     "validate-dataset": cmd_validate_dataset,
     "preview-dataset": cmd_preview_dataset,
+    "export-dataset": cmd_export_dataset,
     "export": cmd_export,
     "inspect-model": cmd_inspect_model,
     "auto-config": cmd_auto_config,

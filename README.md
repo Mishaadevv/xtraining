@@ -23,26 +23,33 @@ pipeline and no cloud dependency. Electron shell, React interface, Python engine
 - **New training wizard** — pick a base model and a dataset, and the app derives a
   complete configuration (batch size, precision, context length, optimizer, rank)
   from the detected hardware, explaining every choice. Simple and Advanced modes.
-- **Datasets** — JSON, JSONL, CSV, TXT, Parquet, a folder of shards, or a Hugging Face
-  Hub id. Referenced in place, never copied. A built-in Zeqou set (default v2 with
-  thinking, plus dialogue, code, science and tech parts and language packs) ships
-  inside the app and stands selected until you pick your own — a first run needs no
-  import at all. Validation reports exactly what the model would learn from: field
-  mapping, duplicates, over-length records, role statistics and normalised previews.
+- **Datasets** — nothing is bundled: the library is exactly what you bring. Point the
+  app at a folder and it is scanned automatically (every supported file, and each
+  subfolder of shards as one dataset), or import a file, folder or Hugging Face Hub id
+  from anywhere. Referenced in place, never copied. Supported types: JSON, JSONL/NDJSON,
+  CSV, PSV, TSV, TXT/Markdown, Parquet, Arrow/Feather, ORC, SQLite databases, Excel
+  workbooks and YAML — plus gzip/bzip2/xz compressed variants of the text formats
+  (`shard.jsonl.gz`). Each type is read by the Python engine, which reports which
+  optional readers are installed and what to install for the rest. Validation reports
+  exactly what the model would learn from: field mapping, duplicates, over-length
+  records, role statistics and normalised previews. Any of it — a shard folder, a
+  database, a Hub id — can be **exported as one single file** (JSONL, JSON, CSV, TSV,
+  plain text or Parquet).
 - **Training** — live loss/LR curves, GPU utilisation and VRAM telemetry sampled from
   nvidia-smi, step metrics, ETA, event log, stdout/stderr, checkpoints with pause,
   resume and retention. A LoRA adapter (or 4-bit QLoRA, full fine-tune, SFT, or a
   from-scratch small GPT) is produced into the app model library.
-- **Models** — the library of base and trained models, with export to any folder
-  (copy, or a real merge of the adapter into the base model) and one-click
-  "test in playground".
+- **Models** — the library of base and trained models, with export to any folder or
+  packed into a single `.zip` file, plus a real merge of the adapter into the base
+  model, and one-click "test in playground".
 - **Playground** — load a trained or local model and talk to it with streaming output.
   **Thinking mode** streams the model's private chain of thought into its own panel
   before the answer, with adjustable sampling (temperature, top-p, repetition penalty).
 - **Hardware** — what the machine can actually do: NVIDIA GPUs from nvidia-smi,
   the installed PyTorch build, its CUDA support, CPU and RAM.
-- **Settings** — interpreter selection, one-click ML runtime installation into an
-  isolated venv, Hugging Face token in the OS keychain, storage locations, theme.
+- **Settings** — interpreter selection (found automatically even when it is not on
+  PATH), one-click ML runtime installation into an isolated venv, Hugging Face token
+  in the OS keychain, the scanned datasets folder, storage locations, theme.
 
 ## Repository layout
 
@@ -61,10 +68,11 @@ stays a thin supervisor and the ML logic stays testable in plain Python.
 ```bash
 npm install
 npm run dev            # vite dev server + electron shell
-npm run test:py        # python engine tests (206)
-npm run smoke          # end-to-end electron smoke suite (54)
+npm run test:py        # python engine tests (309)
+npm run smoke          # end-to-end electron smoke suite (87)
 npm run verify         # typecheck + python tests + smoke
 npm run build          # typecheck + production renderer build
+npm run probe:ui       # measures real layout geometry in the built renderer
 ```
 
 The renderer also runs standalone (`npm run dev:web`) for interface work: every
