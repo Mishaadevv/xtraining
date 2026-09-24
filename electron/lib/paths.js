@@ -1,141 +1,79 @@
 /**
- * Filesystem layout for ZeqouXTraining.
- *
- * Everything user-generated lives under Electron's userData directory:
- *   settings.json, secrets.json, datasets.json, models.json, runs.json
- *   datasets/              files the user drops in, scanned into the library
- *   runs/<runId>/          checkpoints, trainer state, logs, metadata
- *   models/                trained models produced by this app
+ * Path resolution for the app: where the engine lives, where the workspace
+ * lives, and which directories exist inside it.
  */
-const { app } = require("electron");
-const path = require("node:path");
-const fs = require("node:fs");
+import { app } from "electron";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function root() {
+const here = path.dirname(fileURLToPath(import.meta.url));
+export const projectRoot = path.resolve(here, "..", "..");
+
+export const WORKSPACE_DIRS = ["models", "datasets", "jobs", "runtime", "exports", "logs", "projects", "servers"];
+
+/** The Python engine ships next to the app, in `python/zxtrain`. */
+export function engineDir() {
+  const packaged = path.join(process.resourcesPath ?? "", "python");
+  if (app.isPackaged && fs.existsSync(path.join(packaged, "zxtrain"))) return packaged;
+  return path.join(projectRoot, "python");
+}
+
+/** Where user data lives: settings, workspace, logs. */
+export function userDataDir() {
   return app.getPath("userData");
 }
 
-const dirs = {
-  root,
-  runs: () => path.join(root(), "runs"),
-  models: () => path.join(root(), "models"),
-  cache: () => path.join(root(), "cache"),
-  hfCache: () => path.join(root(), "cache", "huggingface"),
-  logs: () => path.join(root(), "logs"),
-  datasets: datasetsDir,
-};
-
-const files = {
-  settings: () => path.join(root(), "settings.json"),
-  secrets: () => path.join(root(), "secrets.json"),
-  datasetsIndex: () => path.join(root(), "datasets.json"),
-  modelsIndex: () => path.join(root(), "models.json"),
-  projectsIndex: () => path.join(root(), "projects.json"),
-  runsIndex: () => path.join(root(), "runs.json"),
-};
-
-/**
- * True for a path inside an asar archive.
- *
- * `fs` sees through an asar, but the operating system does not: a child process
- * cannot be started with a working directory inside one. Node reports that as
- * "spawn python ENOENT", which reads like a missing interpreter and is not —
- * so an asar path is never used as the backend directory.
- */
-function isInsideAsar(target) {
-  const value = String(target).replace(/\\/g, "/");
-  return value.includes("/app.asar/") && !value.includes("/app.asar.unpacked/");
+export function settingsPath() {
+  return path.join(userDataDir(), "settings.json");
 }
 
-/**
- * The Python backend package — always a real directory on disk.
- *
- * A packaged build copies it next to the app through electron-builder's
- * extraResources (a real folder); development uses the repo folder next to
- * `electron/`. The unpacked-archive location is kept as a last resort.
- */
-function pythonPackageDir() {
-  const candidates = [
-    path.join(process.resourcesPath || "", "python"),
-    path.join(process.resourcesPath || "", "app.asar.unpacked", "python"),
-    path.join(__dirname, "..", "..", "python"),
-  ];
-  for (const candidate of candidates) {
-    if (isInsideAsar(candidate)) continue;
-    try {
-      if (fs.existsSync(path.join(candidate, "zeqouxtraining", "cli.py"))) return candidate;
-    } catch {
-      /* keep looking */
-    }
+export function defaultWorkspace() {
+  const preferred = path.join(app.getPath("documents"), "ZeqouXTraining");
+  return process.env.ZEQOUX_WORKSPACE || preferred;
+}
+
+export function ensureWorkspace(workspace) {
+  const root = workspace || defaultWorkspace();
+  fs.mkdirSync(root, { recursive: true });
+  for (const name of WORKSPACE_DIRS) {
+    fs.mkdirSync(path.join(root, name), { recursive: true });
   }
-  return candidates[candidates.length - 1];
+  return root;
+}
+
+export function workspaceFile(workspace, name) {
+  return path.join(workspace, name);
 }
 
 /**
- * The dataset folder the app scans.
+ * The version of *this* application.
  *
- * Deliberately inside userData: the app ships no datasets at all, so the files
- * that appear under Datasets are exactly the ones the user put there. The
- * folder can be pointed somewhere else in Settings → Datasets.
+ * `app.getVersion()` reads it from the package.json of the app being run, but
+ * when Electron is handed a file instead of a directory — which is how the
+ * development harness and the tests start it — there is no such package.json in
+ * scope and Electron answers with its own version. Falling back to the project's
+ * package.json keeps the number honest in development instead of claiming to be
+ * the browser runtime.
  */
-function datasetsDir() {
-  return path.join(root(), "datasets");
-}
-
-function ensureDirs() {
-  for (const dir of [dirs.root(), dirs.runs(), dirs.models(), dirs.cache(), dirs.logs(), dirs.datasets()]) {
-    fs.mkdirSync(dir, { recursive: true });
+export function appVersion() {
+  if (app.isPackaged) return app.getVersion();
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+    if (typeof pkg.version === "string" && pkg.version) return pkg.version;
+  } catch {
+    /* an unreadable package.json is not worth failing over */
   }
+  return app.getVersion();
 }
 
-/** Turn an arbitrary label into a filesystem-safe folder name. */
-function slugify(text, fallback = "run") {
-  const slug = String(text || "")
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-  return slug || fallback;
+export function tmpDir() {
+  const dir = path.join(os.tmpdir(), "zxtrain-electron");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
-/**
- * True when `target` lives inside `parent`.
- *
- * Recorded paths use forward slashes for portability while `path.join` produces
- * backslashes on Windows, so a plain `startsWith` comparison silently fails
- * there. Both sides are normalised before comparing.
- */
-function isInside(parent, target) {
-  if (!parent || !target) return false;
-  const normalise = (value) => {
-    const resolved = path.resolve(String(value).replace(/[\\/]+/g, path.sep));
-    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-  };
-  const base = normalise(parent);
-  const candidate = normalise(target);
-  if (candidate === base) return true;
-  return candidate.startsWith(base.endsWith(path.sep) ? base : base + path.sep);
+export function rendererIndex() {
+  return path.join(projectRoot, "dist", "index.html");
 }
-
-function uniqueDir(parent, base) {
-  const slug = slugify(base);
-  let candidate = path.join(parent, slug);
-  let counter = 2;
-  while (fs.existsSync(candidate)) {
-    candidate = path.join(parent, `${slug}-${counter}`);
-    counter += 1;
-  }
-  return candidate;
-}
-
-module.exports = {
-  dirs,
-  files,
-  pythonPackageDir,
-  datasetsDir,
-  ensureDirs,
-  slugify,
-  uniqueDir,
-  isInside,
-  isInsideAsar,
-  root,
-};

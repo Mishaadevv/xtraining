@@ -1,6 +1,0 @@
-{"instruction": "What is a warmup ratio?", "output": "The fraction of training steps spent ramping the learning rate up from zero."}
-{"instruction": "Why mask padding in the loss?", "output": "Otherwise the model learns to predict padding tokens and wastes capacity on them."}
-{"instruction": "What does the effective batch size mean?", "output": "Batch size multiplied by gradient accumulation: the amount of data behind one optimizer step."}
-{"instruction": "Give one reason to checkpoint often.", "output": "A crash then costs minutes rather than the whole run."}
-{"instruction": "Why is bf16 preferred over fp16 when available?", "output": "It keeps the exponent range of fp32, so loss scaling is not needed and overflow is rare."}
-{"instruction": "What is the point of an evaluation split?", "output": "It measures generalisation on data the optimizer never saw, which reveals overfitting."}

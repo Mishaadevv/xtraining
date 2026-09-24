@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: Engine tests (${{ matrix.os }} · python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run the engine test suite
+        run: python python/tests/test_engine.py
+      - name: Report engine command surface
+        run: python -m zxtrain.cli --help
+        env:
+          PYTHONPATH: python
+        continue-on-error: true
+
+  app:
+    name: Typecheck, build and smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build the renderer
+        run: npm run build
+      - name: Smoke test the desktop app
+        shell: bash
+        env:
+          ZEQOUX_SMOKE_LOG: ${{ github.workspace }}/smoke.log
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum npx electron scripts/smoke.mjs
+          else
+            npx electron scripts/smoke.mjs
+          fi
+      - name: Launch the app and walk every page
+        shell: bash
+        env:
+          ZEQOUX_LAUNCH_LOG: ${{ github.workspace }}/launch.log
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum npx electron scripts/launch.mjs
+          else
+            npx electron scripts/launch.mjs
+          fi
+      - name: Package the app and test the packed build
+        if: runner.os == 'Windows'
+        run: |
+          node scripts/dist.mjs --no-build
+          npm run verify:packed
+          npm run verify:update
+      - name: Show the logs
+        if: always()
+        shell: bash
+        run: |
+          cat smoke.log || true
+          cat launch.log || true
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.os }}
+          path: |
+            smoke.log
+            launch.log
+          if-no-files-found: ignore

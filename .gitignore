@@ -1,24 +1,22 @@
-# Dependencies
 node_modules/
-
-# Renderer bundle (built from src/ by Vite)
 dist/
-
-# Packaged installers (electron-builder output)
 release/
-
-# Codebuff/Freebuff metadata
 .freebuff/
 
-# Python
+# Python engine runtime artifacts
 python/**/__pycache__/
 python/**/*.pyc
 python/.venv/
+.pytest_cache/
 
-# Logs and environment
+# Local workspace data (models, datasets, jobs created while running the app)
+.local-data/
+
 *.log
 .env
 
-# OS
+# Signing material (self-signed development certificates and their password)
+certs/
+
 .DS_Store
 Thumbs.db

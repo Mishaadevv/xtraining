@@ -1,6 +1,0 @@
-{"instruction": "Summarise the following paragraph in one sentence.", "input": "ZeqouXTraining detects the GPU it runs on and refuses to start a training run that cannot fit in memory.", "output": "ZeqouXTraining checks your hardware before starting a run."}
-{"instruction": "Translate to Russian.", "input": "The training run finished without errors.", "output": "Обучение завершилось без ошибок."}
-{"instruction": "Explain what a LoRA adapter is, briefly.", "input": "", "output": "A LoRA adapter is a small set of extra weight matrices trained while the base model stays frozen, so the stored result is a few megabytes instead of gigabytes."}
-{"instruction": "Write a commit message for a bug fix.", "input": "Fixed the checkpoint listing to sort by step instead of by name.", "output": "Sort checkpoints numerically by step."}
-{"instruction": "List three signs a dataset is malformed.", "input": "", "output": "Empty target fields, duplicate rows, and samples longer than the context window."}
-{"instruction": "Describe gradient accumulation.", "input": "", "output": "Gradient accumulation sums gradients over several small micro-batches before applying one optimizer step, which keeps the effective batch size while lowering peak memory."}

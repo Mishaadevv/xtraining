@@ -1,6 +1,0 @@
-{"instruction": "Name the four training methods.", "output": "LoRA, QLoRA, SFT and full fine-tuning."}
-{"instruction": "Name the four training methods.", "output": "LoRA, QLoRA, SFT and full fine-tuning."}
-{"instruction": "Say something useful.", "output": ""}
-{"instruction": "Reply with a single letter.", "output": "a"}
-{"instruction": "Explain why a very long sample is a problem for training on a small GPU.", "output": "Attention cost grows quadratically with sequence length, so a single enormous sample can force a smaller batch size for every other sample in the dataset, which slows the whole run down and makes the effective gradient noisier than it needs to be for the vast majority of examples that are much shorter. This paragraph exists purely to exceed a small context length so the validator has something to report."}
-{"instruction": "  ", "output": "   "}

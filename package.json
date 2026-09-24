@@ -1,30 +1,36 @@
 {
   "name": "zeqouxtraining",
   "productName": "ZeqouXTraining",
-  "version": "1.0.1",
-  "description": "ZeqouXTraining — desktop workspace for fine-tuning and training AI models",
+  "version": "2.0.0",
+  "description": "ZeqouXTraining — local-first AI model training, fine-tuning and deployment studio",
   "main": "electron/main.js",
   "author": "Zeqou <misakolot6@gmail.com>",
   "license": "PolyForm-Strict-1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:web": "vite",
-    "build": "tsc --noEmit && node scripts/check-js.mjs && vite build",
+    "build": "tsc --noEmit && vite build",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit",
-    "check:js": "node scripts/check-js.mjs",
-    "test:py": "cd python && python tests/test_backend.py",
-    "smoke": "electron scripts/smoke.js",
-    "probe:ui": "electron scripts/ui-probe.js",
-    "selftest": "electron . --self-test",
-    "verify": "npm run typecheck && npm run check:js && npm run test:py && npm run smoke",
-    "py:check": "cd python && python -m zeqouxtraining.cli env-check",
-    "pack": "electron-builder --dir --publish never",
-    "dist": "npm run build && electron-builder --publish never"
+    "test": "python python/tests/test_engine.py",
+    "smoke": "electron scripts/smoke.mjs",
+    "launch": "electron scripts/launch.mjs",
+    "verify": "npm run typecheck && npm run test && npm run smoke",
+    "verify:app": "npm run build && npm run launch",
+    "verify:packed": "node scripts/verify-packed.mjs",
+    "verify:update": "node scripts/verify-update.mjs",
+    "update-server": "node scripts/update-server.mjs",
+    "update-manifest": "node scripts/make-update-manifest.mjs",
+    "cert": "node scripts/make-cert.mjs",
+    "pack": "node scripts/dist.mjs --dir",
+    "dist": "node scripts/dist.mjs",
+    "dist:signed": "node scripts/dist.mjs --sign"
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -48,6 +54,14 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Mishaadevv",
+        "repo": "xtraining",
+        "releaseType": "release"
+      }
+    ],
     "win": {
       "icon": "ico.png",
       "target": [
@@ -67,13 +81,6 @@
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "x64",
             "arm64"
@@ -99,7 +106,13 @@
     "extraResources": [
       {
         "from": "python",
-        "to": "python"
+        "to": "python",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/.venv/**",
+          "!**/tests/**"
+        ]
       }
     ]
   }

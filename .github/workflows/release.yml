@@ -1,112 +1,87 @@
-name: Build & Release
+name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  # Runs on every trigger so a broken commit cannot be packaged into a release.
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Python backend tests
-        working-directory: python
-        run: python3 tests/test_backend.py
-
   build:
-    needs: verify
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            platform: windows
-          - os: ubuntu-latest
-            platform: linux
+            target: --win
           - os: macos-latest
-            platform: macos
-    runs-on: ${{ matrix.os }}
+            target: --mac
+          - os: ubuntu-latest
+            target: --linux
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
-      - name: Build renderer
-        run: npm run build
+      - name: Verify before packaging
+        run: |
+          npm run typecheck
+          python python/tests/test_engine.py
 
-      - name: Build distributables
-        run: npx electron-builder --publish never
+      - name: Build installers
+        shell: bash
+        # Signing is optional: provide CSC_LINK and CSC_KEY_PASSWORD as secrets
+        # and ZEQOUX_PUBLISHER as a variable, and the same certificate that signs
+        # the build is named in app-update.yml, which is what makes updates from
+        # this build trusted. Without them the build is simply unsigned.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          ZEQOUX_PUBLISHER: ${{ vars.ZEQOUX_PUBLISHER }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          args=(--publish never)
+          if [ -n "$CSC_LINK" ] && [ -n "$ZEQOUX_PUBLISHER" ]; then
+            args+=("-c.win.signtoolOptions.publisherName=$ZEQOUX_PUBLISHER")
+          fi
+          npx electron-builder ${{ matrix.target }} "${args[@]}"
+
+      - name: Verify the installers that will be published
+        if: runner.os == 'Windows'
+        run: |
+          npm run verify:packed
+          npm run verify:update
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: xtraining-${{ matrix.platform }}
+          name: ZeqouXTraining-${{ matrix.os }}
           path: |
-            release/*.exe
-            release/*.dmg
-            release/*.zip
-            release/*.AppImage
-            release/*.deb
-          if-no-files-found: error
+            release/**
+          if-no-files-found: warn
 
-  release:
+  publish:
+    name: Attach builds to the release
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          merge-multiple: true
           path: artifacts
-
-      - name: Create release and attach files
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          name: ZeqouXTraining ${{ github.ref_name }}
-          body: |
-            Cross-platform release.
-
-            **Windows:** Setup .exe (installer) and portable .exe
-            **macOS:** .dmg and .zip (x64 and Apple Silicon)
-            **Linux:** .AppImage and .deb (x64)
-
-            Training and inference need an ML runtime, which is **not** bundled — it is
-            machine-specific and several gigabytes. The app detects what is missing and
-            generates the exact install command in Settings → Environment.
-
-            Licensed under PolyForm Strict 1.0.0 (see the repository).
-          files: |
-            artifacts/*.exe
-            artifacts/*.dmg
-            artifacts/*.zip
-            artifacts/*.AppImage
-            artifacts/*.deb
-          fail_on_unmatched_files: true
+          files: artifacts/**/*
+          generate_release_notes: true

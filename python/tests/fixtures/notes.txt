@@ -1,7 +1,0 @@
-A checkpoint is a snapshot of the model and optimizer state written during training.
-
-Resuming from a checkpoint continues from the exact step where the run stopped, including the learning rate schedule.
-
-Gradient accumulation lets a small GPU behave like a large one by summing gradients over several micro-batches.
-
-Mixed precision stores weights in a smaller format to cut memory use and speed up the math on tensor cores.

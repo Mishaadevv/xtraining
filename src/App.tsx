@@ -1,102 +1,177 @@
 import { useEffect, useState } from "react";
+import { CommandPalette } from "./components/CommandPalette";
+import { Shell } from "./components/Shell";
+import { Toasts } from "./components/Toasts";
+import { Button, Callout, Panel, Spinner } from "./components/ui";
+import { AppProvider, useApp } from "./state/app";
+import { RouterProvider, detailId, useRouter } from "./state/router";
+import { DashboardPage } from "./pages/Dashboard";
+import { HardwarePage } from "./pages/Hardware";
+import { EnvironmentPage } from "./pages/Environment";
+import { ModelsPage } from "./pages/Models";
+import { ModelDetailPage } from "./pages/ModelDetail";
+import { DatasetsPage } from "./pages/Datasets";
+import { DatasetDetailPage } from "./pages/DatasetDetail";
+import { TrainingPage } from "./pages/Training";
+import { NewTrainingPage } from "./pages/NewTraining";
+import { TrainingRunPage } from "./pages/TrainingRun";
+import { ExperimentsPage } from "./pages/Experiments";
+import { EvaluationPage } from "./pages/Evaluation";
+import { PlaygroundPage } from "./pages/Playground";
+import { ComparePage } from "./pages/Compare";
+import { AdaptersPage } from "./pages/Adapters";
+import { QuantizationPage } from "./pages/Quantization";
+import { ConversionPage } from "./pages/Conversion";
+import { DeployPage } from "./pages/Deploy";
+import { FilesPage } from "./pages/Files";
+import { ProjectsPage } from "./pages/Projects";
+import { JobsPage } from "./pages/Jobs";
+import { SettingsPage } from "./pages/Settings";
+import { DocsPage } from "./pages/Docs";
 
-import { Sidebar } from "@/components/layout/Shell";
-import { ToastStack } from "@/components/ui/Overlay";
-import { Button, Note } from "@/components/ui/primitives";
-import { isDesktop } from "@/lib/bridge";
-import { useStore } from "@/state/store";
-import {
-  appStore,
-  bootstrap,
-  refreshEnv,
-  startAutoRefresh,
-  subscribeToEvents,
-} from "@/state/appStore";
-
-import { ProjectsPage } from "@/features/projects/ProjectsPage";
-import { NewTrainingPage } from "@/features/new-training/NewTrainingPage";
-import { TrainingPage } from "@/features/training/TrainingPage";
-import { ModelsPage } from "@/features/models/ModelsPage";
-import { DatasetsPage } from "@/features/datasets/DatasetsPage";
-import { PlaygroundPage } from "@/features/playground/PlaygroundPage";
-import { HardwarePage } from "@/features/hardware/HardwarePage";
-import { SettingsPage } from "@/features/settings/SettingsPage";
-
-export default function App() {
-  const state = useStore(appStore);
-  const [noticeDismissed, setNoticeDismissed] = useState(false);
-
+function ThemeSync() {
+  const { settings } = useApp();
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let stopRefresh: (() => void) | undefined;
-    void (async () => {
-      await bootstrap();
-      unsubscribe = subscribeToEvents();
-      stopRefresh = startAutoRefresh();
-    })();
-    return () => {
-      unsubscribe?.();
-      stopRefresh?.();
+    const theme = settings?.theme ?? "system";
+    const dark =
+      theme === "dark" ||
+      (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
+    const listener = (event: MediaQueryListEvent) => {
+      if ((settings?.theme ?? "system") === "system") {
+        document.documentElement.classList.toggle("dark", event.matches);
+      }
     };
-  }, []);
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    query.addEventListener("change", listener);
+    return () => query.removeEventListener("change", listener);
+  }, [settings?.theme]);
+  return null;
+}
 
-  // The status strip reflects reality again the moment the window regains
-  // focus — the user may have installed a driver or a package meanwhile.
-  useEffect(() => {
-    const onFocus = () => void refreshEnv();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, []);
+function Routes() {
+  const router = useRouter();
+  const [section, id] = [router.path.split("/").filter(Boolean)[0] ?? "dashboard", detailId(router.path)];
 
-  if (!state.booted) {
-    return (
-      <div className="flex h-full items-center justify-center bg-[var(--bg)]">
-        <div className="flex flex-col items-center gap-3">
-          <img src="./ico.png" alt="Zeqou" className="h-10 w-10 rounded-[10px] opacity-90" />
-          <div className="h-1 w-[140px] overflow-hidden rounded-full bg-[var(--panel-2)]">
-            <div className="h-full w-1/2 animate-pulse rounded-full bg-[var(--acc)]" />
+  switch (section) {
+    case "dashboard":
+      return <DashboardPage />;
+    case "hardware":
+      return <HardwarePage />;
+    case "environment":
+      return <EnvironmentPage />;
+    case "models":
+      return id ? <ModelDetailPage id={id} /> : <ModelsPage />;
+    case "datasets":
+      return id ? <DatasetDetailPage id={id} /> : <DatasetsPage />;
+    case "training":
+      if (id === "new") return <NewTrainingPage />;
+      return id ? <TrainingRunPage jobId={id} /> : <TrainingPage />;
+    case "experiments":
+      return <ExperimentsPage />;
+    case "evaluation":
+      return <EvaluationPage />;
+    case "playground":
+      return <PlaygroundPage />;
+    case "compare":
+      return <ComparePage />;
+    case "adapters":
+      return <AdaptersPage />;
+    case "quantization":
+      return <QuantizationPage />;
+    case "conversion":
+      return <ConversionPage />;
+    case "deploy":
+      return <DeployPage />;
+    case "files":
+      return <FilesPage />;
+    case "projects":
+      return <ProjectsPage />;
+    case "jobs":
+      return <JobsPage />;
+    case "settings":
+      return <SettingsPage />;
+    case "docs":
+      return <DocsPage />;
+    default:
+      return (
+        <Panel>
+          <Callout tone="warn" title={`No page for “${router.path}”`}>
+            The route does not exist. Use the command palette (Ctrl+K) to open a real page.
+          </Callout>
+          <div className="mt-3">
+            <Button onClick={() => router.navigate("/dashboard")}>Back to dashboard</Button>
           </div>
-          <p className="text-[12px] text-[var(--text-3)]">Starting ZeqouXTraining…</p>
+        </Panel>
+      );
+  }
+}
+
+function Boot() {
+  const { ready, bootError, appInfo } = useApp();
+  const router = useRouter();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+      if (event.key === "Escape") setPaletteOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!ready) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-0">
+        <Spinner label="Starting the engine and reading hardware…" />
+      </div>
+    );
+  }
+
+  if (bootError) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-0 p-8">
+        <div className="w-full max-w-2xl">
+          <Callout tone="danger" title={bootError.message} hint={bootError.hint} detail={bootError.detail}>
+            The app could not reach its Python engine ({bootError.code}). Nothing is simulated: the
+            interface stays unpopulated until the engine answers.
+          </Callout>
+          <div className="mt-3 flex gap-2">
+            <Button variant="primary" onClick={() => window.location.reload()}>
+              Restart the interface
+            </Button>
+            <Button onClick={() => router.navigate("/environment")}>Open Environment</Button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-full bg-[var(--bg)] text-[var(--text)]">
-      <div className="zq-aurora" aria-hidden />
-      <Sidebar />
+    <Shell onOpenPalette={() => setPaletteOpen(true)}>
+      <Routes />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <Toasts />
+      {appInfo?.packaged ? null : (
+        <div className="pointer-events-none fixed bottom-9 right-4 z-30 max-w-xs text-right text-[10px] text-ink-3">
+          development build · engine at {appInfo?.engineDir?.split(/[\\/]/).slice(-1)[0]}
+        </div>
+      )}
+    </Shell>
+  );
+}
 
-      <main className="relative z-[1] flex min-w-0 flex-1 flex-col">
-        {!isDesktop && !noticeDismissed ? (
-          <div className="px-6 pt-4">
-            <Note
-              tone="warn"
-              title="Interface preview only"
-              actions={
-                <Button size="sm" variant="ghost" onClick={() => setNoticeDismissed(true)}>
-                  Dismiss
-                </Button>
-              }
-            >
-              The Electron shell is not connected, so hardware detection, dataset validation and
-              training are unavailable. Run <code className="zq-mono">npm run dev</code> to use the
-              real application.
-            </Note>
-          </div>
-        ) : null}
-
-        {state.page === "projects" ? <ProjectsPage /> : null}
-        {state.page === "new" ? <NewTrainingPage /> : null}
-        {state.page === "training" ? <TrainingPage /> : null}
-        {state.page === "models" ? <ModelsPage /> : null}
-        {state.page === "datasets" ? <DatasetsPage /> : null}
-        {state.page === "playground" ? <PlaygroundPage /> : null}
-        {state.page === "hardware" ? <HardwarePage /> : null}
-        {state.page === "settings" ? <SettingsPage /> : null}
-      </main>
-
-      <ToastStack toasts={state.toasts} />
-    </div>
+export default function App() {
+  return (
+    <AppProvider>
+      <ThemeSync />
+      <RouterProvider>
+        <Boot />
+      </RouterProvider>
+    </AppProvider>
   );
 }
