@@ -111,6 +111,7 @@ Verification:
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run check:lock   # the lock file installs on every platform, not only this one
+npm run check:release  # the update manifests name files the build really produced
 npm test             # Python engine test suite (real training, resume, conversion, adapters)
 npm run smoke        # Electron smoke test in a throwaway workspace
 npm run launch       # starts the real application and walks every page
@@ -178,7 +179,13 @@ does that for the current user, and asks the operating system for permission).
 `app-update.yml` next to the engine, so the installed app knows where to look. An
 unpacked build gets no such file from `electron-builder`, so `scripts/dist.mjs`
 writes the same configuration for it — otherwise `release/win-unpacked` could not
-test the update path at all.
+test the update path at all. Next to the channel sits the manifest (`latest.yml`,
+plus a macOS and a Linux variant), and it names the file an installed copy will
+download. `electron-builder` writes those names without spaces because GitHub
+does not accept them, so the installer itself is named without spaces too and
+`npm run check:release` asserts that every name in a manifest is a file the build
+really produced. Nothing else reads a manifest, and a mismatch is invisible until
+an update fails on someone else's machine.
 
 **In the app.** Settings → Updates shows the installed version, the channel, the
 last check and the updater's log; it can check, download and install. Updates are
@@ -200,7 +207,7 @@ Some settings exist for hosts and tests, and none of them are in the interface:
 installer it names, at the same base URL:
 
 ```bash
-node scripts/make-update-manifest.mjs --installer "release/ZeqouXTraining Setup 2.0.0.exe" --version 2.0.1 --out release/channel
+node scripts/make-update-manifest.mjs --installer "release/ZeqouXTraining-Setup-2.0.0.exe" --version 2.0.1 --out release/channel
 npm run update-server -- release/channel        # serves it, including byte ranges
 ```
 

@@ -20,6 +20,7 @@
     "verify": "npm run typecheck && npm run test && npm run smoke",
     "verify:app": "npm run build && npm run launch",
     "check:lock": "node scripts/check-lock.mjs",
+    "check:release": "node scripts/check-release.mjs",
     "verify:packed": "node scripts/verify-packed.mjs",
     "verify:update": "node scripts/verify-update.mjs",
     "update-server": "node scripts/update-server.mjs",
@@ -71,6 +72,7 @@
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "license": "LICENSE",
@@ -95,6 +97,9 @@
           ]
         }
       ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
     },
     "linux": {
       "icon": "ico.png",

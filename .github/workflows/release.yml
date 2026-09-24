@@ -82,6 +82,12 @@ jobs:
 
       # The same verification CI runs, against the artifacts that are about to be
       # published rather than against a local build.
+      # The manifest is the update channel: it names the file an installed copy will
+      # download, and electron-builder writes those names without spaces while the
+      # file on disk keeps them. Nothing else reads the manifest, so a mismatch would
+      # only show up as updates failing on users' machines.
+      - name: Check that the manifests name files this build carries
+        run: npm run check:release
       - name: Verify the packed build
         if: runner.os == 'Windows'
         run: npm run verify:packed
