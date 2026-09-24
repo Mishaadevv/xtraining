@@ -106,12 +106,25 @@ jobs:
           if (message) console.log(`::error title=what failed::${message}`);
           '
 
-      - name: Upload artifacts
+      # Only the distributables, never `release/**`: the release step uploads every
+      # file under its base name, and the unpacked trees of three platforms collide
+      # on `app.asar`, `builder-debug.yml` and the rest — which is what made the
+      # release fail with a duplicate asset. These patterns also carry the update
+      # manifests (`latest*.yml`) the installed app reads.
+      - name: Upload the distributables
         uses: actions/upload-artifact@v4
         with:
           name: ZeqouXTraining-${{ matrix.os }}
           path: |
-            release/**
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+            release/latest.yml
+            release/latest-mac.yml
+            release/latest-linux.yml
           if-no-files-found: warn
 
   publish:
