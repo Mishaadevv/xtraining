@@ -80,7 +80,10 @@ Every produced model and checkpoint keeps a `parent` link, so the Experiments pa
 
 ## Requirements
 
-* Windows, macOS or Linux, Node 20+, and **Python 3.10 – 3.13**.
+* Windows, macOS or Linux, Node 20+ to run the app, and **Python 3.10 – 3.13**.
+* **Node 22.4 or newer** to run the tests that boot the packed build: they drive the installed app through its
+  DevTools socket using the WebSocket client built into Node, which was experimental before 22.4. That is the version
+  CI and the release workflow use; the app itself does not need it.
 * Python 3.12/3.13 is recommended: PyTorch publishes no wheels for 3.14 yet, and the app tells you this instead of
   failing later. The `tiny` backend works on any version.
 * An NVIDIA GPU is optional. Without one, the app runs the tiny backend on the CPU and reports that CUDA-only
@@ -107,6 +110,7 @@ Verification:
 
 ```bash
 npm run typecheck    # tsc --noEmit
+npm run check:lock   # the lock file installs on every platform, not only this one
 npm test             # Python engine test suite (real training, resume, conversion, adapters)
 npm run smoke        # Electron smoke test in a throwaway workspace
 npm run launch       # starts the real application and walks every page
@@ -144,6 +148,12 @@ for portable installs and required by nothing else; the tests set it themselves 
 CI runs all of it on Windows, macOS and Linux (see `.github/workflows/ci.yml`), packages the app and runs the
 packed-build and update tests on Windows, and runs the engine suite on Python 3.11 – 3.13. The release workflow
 verifies the installers it is about to publish the same way.
+
+Before installing anything, CI checks that the lock file can be installed on every platform. A `package-lock.json`
+is written by whichever machine ran `npm install`, and npm seeds the tree from the local `node_modules` — so a lock
+created on Windows can describe only Windows and leave rollup or esbuild without a native binary everywhere else.
+That is exactly how this repository once shipped a Windows-only lock and a red ubuntu build, so `npm run check:lock`
+now asserts that every optional (that is, per-platform) dependency is really in the lock.
 
 ## Distribution and updates
 

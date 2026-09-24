@@ -96,6 +96,15 @@ export class PackedApp {
   }
 
   async start(extraArgs = []) {
+    // The app is driven through its DevTools socket using the WebSocket client
+    // that is built into Node — stable since 22.4, and behind
+    // `--experimental-websocket` before that. Saying which Node is needed beats
+    // a bare "WebSocket is not defined" from somewhere inside the attach code.
+    if (typeof WebSocket === "undefined") {
+      throw new Error(
+        `driving the packed app needs a built-in WebSocket: Node 22.4 or newer (running ${process.version})`,
+      );
+    }
     const port = await freePort();
     this.debugPort = port;
     console.log(`\nstarting ${path.relative(root, this.executable)}  (debug port ${port})`);

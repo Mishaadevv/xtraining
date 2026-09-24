@@ -19,6 +19,7 @@
     "launch": "electron scripts/launch.mjs",
     "verify": "npm run typecheck && npm run test && npm run smoke",
     "verify:app": "npm run build && npm run launch",
+    "check:lock": "node scripts/check-lock.mjs",
     "verify:packed": "node scripts/verify-packed.mjs",
     "verify:update": "node scripts/verify-update.mjs",
     "update-server": "node scripts/update-server.mjs",

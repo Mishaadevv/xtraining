@@ -26,10 +26,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22+ : the tests that boot the packed build use the built-in
+          # WebSocket client, which is only stable from 22.4.
+          node-version: 22
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Check that the lock file covers every platform
+        run: npm run check:lock
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund

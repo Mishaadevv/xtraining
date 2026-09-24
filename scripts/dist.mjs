@@ -30,6 +30,27 @@ const metaFile = path.join(certDir, "dev-codesign.json");
 const passwordFile = path.join(certDir, "dev-codesign.password");
 
 const args = process.argv.slice(2);
+
+// Only the flags this script actually reads are accepted. A typo used to reach
+// electron-builder, which ignores what it does not know — so `--no-sign` silently
+// produced unsigned installers that looked like a successful signed build.
+const USAGE = [
+  "  node scripts/dist.mjs              typecheck, build the renderer, installers",
+  "  node scripts/dist.mjs --dir        unpacked build only (no installers)",
+  "  node scripts/dist.mjs --sign       sign with certs/dev-codesign.pfx",
+  "  node scripts/dist.mjs --no-build   skip the renderer step (dist/ must exist)",
+].join("\n");
+const KNOWN = ["--sign", "--dir", "--no-build", "--help", "-h"];
+if (args.some((arg) => ["--help", "-h"].includes(arg))) {
+  console.log(`\n${USAGE}\n`);
+  process.exit(0);
+}
+const unknown = args.filter((arg) => !KNOWN.includes(arg));
+if (unknown.length) {
+  console.error(`\nUnknown argument(s): ${unknown.join(", ")}\n\n${USAGE}\n\nNothing was built.`);
+  process.exit(2);
+}
+
 // Certificates come from the environment the way electron-builder expects them,
 // which is also how CI provides them; a local certificate is the fallback.
 const fromEnvironment = Boolean(process.env.CSC_LINK);
@@ -138,8 +159,55 @@ for (const entry of artifacts) {
   const size = fs.statSync(path.join(release, entry)).size;
   console.log(`  ${entry}  ${size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MiB` : `${size} B`}`);
 }
-if (sign) {
+/**
+ * Check what actually landed on disk instead of trusting the build log.
+ *
+ * `electron-builder` prints what it attempts; a signature that never made it —
+ * the file was locked, the certificate was wrong, signtool failed — would
+ * otherwise ship as an unsigned build wearing a "signed" subject line. The
+ * timestamp comes from a network service, so a missing one is reported rather
+ * than treated as a failure: the signature itself is still valid.
+ */
+function verifySignatures() {
+  if (process.platform !== "win32") return true;
+  const pathToExes = path.join(release, "*.exe");
+  const script = [
+    `Get-ChildItem '${pathToExes}' | ForEach-Object {`,
+    `  $s = Get-AuthenticodeSignature $_.FullName;`,
+    `  '{0}|{1}|{2}|{3}' -f $_.Name, $s.Status, $s.SignerCertificate.Subject, $s.TimeStamperCertificate.Subject`,
+    `}`,
+  ].join("\n");
+
+  let output = "";
+  try {
+    output = execFileSync("powershell", ["-NoProfile", "-Command", script], { cwd: root, encoding: "utf8" });
+  } catch (error) {
+    console.log(`\n  could not read the signatures back: ${String(error.message).split("\n")[0]}`);
+    return false;
+  }
+
+  let allSigned = true;
   console.log("");
-  console.log("  verify: powershell -NoProfile -Command \"Get-AuthenticodeSignature 'release\\…' | Format-List\"");
-  console.log("  a self-signed certificate reports UntrustedRoot until it is trusted on the machine reading it");
+  for (const line of output.split(/\r?\n/).filter((entry) => entry.includes("|"))) {
+    const [name, status, signer, stamper] = line.split("|");
+    const signed = status !== "NotSigned" && Boolean(signer);
+    if (!signed) allSigned = false;
+    console.log(
+      `  ${signed ? "signed  " : "UNSIGNED"}  ${name}  ${signed ? signer : status}` +
+        `${stamper ? "  timestamped" : "  (no timestamp: the timestamp service could not be reached)"}`,
+    );
+  }
+  return allSigned;
+}
+
+if (sign) {
+  const allSigned = verifySignatures();
+  console.log("");
+  if (allSigned) {
+    console.log("  every artifact carries the publisher's signature");
+    console.log("  a self-signed certificate reports UntrustedRoot until it is trusted on the machine reading it");
+  } else {
+    console.error("  FAIL  at least one artifact is not signed — do not publish this build");
+    process.exitCode = 1;
+  }
 }
