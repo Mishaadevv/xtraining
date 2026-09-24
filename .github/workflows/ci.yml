@@ -58,15 +58,18 @@ jobs:
         run: npm run typecheck
       - name: Build the renderer
         run: npm run build
+      # `tee` keeps what the Electron binary itself printed — a missing shared
+      # library, a sandbox refusal — next to the checks the script logs, so the
+      # annotation below can say why it failed and not only that it did.
       - name: Smoke test the desktop app
         shell: bash
         env:
           ZEQOUX_SMOKE_LOG: ${{ github.workspace }}/smoke.log
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run --auto-servernum npx electron scripts/smoke.mjs
+            xvfb-run --auto-servernum npx electron scripts/smoke.mjs 2>&1 | tee smoke-output.log
           else
-            npx electron scripts/smoke.mjs
+            npx electron scripts/smoke.mjs 2>&1 | tee smoke-output.log
           fi
       - name: Launch the app and walk every page
         shell: bash
@@ -74,9 +77,9 @@ jobs:
           ZEQOUX_LAUNCH_LOG: ${{ github.workspace }}/launch.log
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run --auto-servernum npx electron scripts/launch.mjs
+            xvfb-run --auto-servernum npx electron scripts/launch.mjs 2>&1 | tee launch-output.log
           else
-            npx electron scripts/launch.mjs
+            npx electron scripts/launch.mjs 2>&1 | tee launch-output.log
           fi
       # Kept as separate steps so a failure names the command that failed.
       - name: Package the installers
@@ -94,6 +97,25 @@ jobs:
         run: |
           cat smoke.log || true
           cat launch.log || true
+
+      # The job log needs a signed-in reader. A failed check also publishes the
+      # tail of its own log as an annotation, which is readable from the run page
+      # — which is how the check that failed can be understood at a glance.
+      - name: Say what failed where it can be read
+        if: failure()
+        shell: bash
+        run: |
+          node -e '
+          const fs = require("fs");
+          const files = process.argv.slice(1).filter((file) => fs.existsSync(file));
+          const lines = [];
+          for (const file of files) {
+            lines.push(`${file} (last 25 lines):`);
+            lines.push(...fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).slice(-25));
+          }
+          const message = lines.map((line) => line.replace(/%/g, "%25")).join("%0A").slice(0, 1500);
+          if (message) console.log(`::error title=what failed::${message}`);
+          ' smoke-output.log launch-output.log smoke.log launch.log
       - name: Upload the logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,4 +124,6 @@ jobs:
           path: |
             smoke.log
             launch.log
+            smoke-output.log
+            launch-output.log
           if-no-files-found: ignore
