@@ -66,8 +66,17 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
           args=(--publish never)
-          if [ -n "$CSC_LINK" ] && [ -n "$ZEQOUX_PUBLISHER" ]; then
+          if [ "$RUNNER_OS" = "Windows" ] && [ -n "${CSC_LINK:-}" ] && [ -n "${ZEQOUX_PUBLISHER:-}" ]; then
             args+=("-c.win.signtoolOptions.publisherName=$ZEQOUX_PUBLISHER")
+          else
+            # Signing here is Windows-only: the certificate these secrets carry is a
+            # .pfx, and macOS cannot use one. More importantly, an *empty* CSC_LINK is
+            # not "no certificate" to electron-builder — it resolves the empty path
+            # against the project directory and dies with
+            # "<project dir> not a file", which is how the macOS build failed. So the
+            # variables are removed from the environment unless they are really used.
+            # macOS and Linux artifacts are unsigned.
+            unset CSC_LINK CSC_KEY_PASSWORD
           fi
           npx electron-builder ${{ matrix.target }} "${args[@]}" 2>&1 | tee builder-output.log
 
