@@ -161,9 +161,12 @@ now asserts that every optional (that is, per-platform) dependency is really in 
 The app updates itself from a release channel, and both halves of that are checked
 by the build rather than assumed.
 
-**Signing.** The Windows installers are the ones that ship signed; the macOS and Linux artifacts
-built by the release workflow are unsigned unless a certificate for that platform is provided
-separately. `npm run cert` creates a self-signed code-signing certificate in
+**Signing.** No certificate is configured for the published build, so the installers on the release
+page are **unsigned** and Windows warns about an unknown publisher. A local build signs on request
+(`npm run dist:signed`), and the release workflow signs Windows when `CSC_LINK` and
+`CSC_KEY_PASSWORD` carry a certificate — macOS and Linux artifacts stay unsigned unless a
+certificate for those platforms is provided separately. `npm run cert` creates a self-signed
+certificate in
 `certs/` (git-ignored), and `npm run dist:signed` uses it. `electron-builder` also
 signs when `CSC_LINK` and `CSC_KEY_PASSWORD` are set, which is how CI does it once
 those secrets exist. The publisher name in the build configuration has to be the
