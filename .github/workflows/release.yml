@@ -69,7 +69,7 @@ jobs:
           if [ -n "$CSC_LINK" ] && [ -n "$ZEQOUX_PUBLISHER" ]; then
             args+=("-c.win.signtoolOptions.publisherName=$ZEQOUX_PUBLISHER")
           fi
-          npx electron-builder ${{ matrix.target }} "${args[@]}"
+          npx electron-builder ${{ matrix.target }} "${args[@]}" 2>&1 | tee builder-output.log
 
       # The same verification CI runs, against the artifacts that are about to be
       # published rather than against a local build.
@@ -79,6 +79,23 @@ jobs:
       - name: Verify the update channel
         if: runner.os == 'Windows'
         run: npm run verify:update
+
+      # A failed release has to be understood without a signed-in reader: the tail
+      # of the builder output is published as an annotation on the run page.
+      - name: Say what failed where it can be read
+        if: failure()
+        shell: bash
+        run: |
+          node -e '
+          const fs = require("fs");
+          const lines = [];
+          if (fs.existsSync("builder-output.log")) {
+            lines.push("electron-builder (last 25 lines):");
+            lines.push(...fs.readFileSync("builder-output.log", "utf8").split(/\r?\n/).filter(Boolean).slice(-25));
+          }
+          const message = lines.map((line) => line.replace(/%/g, "%25")).join("%0A").slice(0, 1500);
+          if (message) console.log(`::error title=what failed::${message}`);
+          '
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
