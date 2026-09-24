@@ -142,10 +142,18 @@ jobs:
       # uploaded — which is how a release ended up carrying 122 assets, most of them
       # unpacked application files from a failed attempt. The old release goes first,
       # and only after every platform has built successfully.
+      # `gh` needs to be told the repository: this job never checks anything out.
+      # It also has to fail loudly when the release exists but cannot be removed, so
+      # only "there is no release yet" is tolerated.
       - name: Remove the release this run replaces
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete "$GITHUB_REF_NAME" --yes || true
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --yes
+          else
+            echo "no release for $GITHUB_REF_NAME yet"
+          fi
 
       - uses: softprops/action-gh-release@v2
         with:
