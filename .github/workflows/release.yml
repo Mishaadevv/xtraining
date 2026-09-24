@@ -44,6 +44,14 @@ jobs:
           npm run typecheck
           python python/tests/test_engine.py
 
+      # `dist/` is not in the repository, so the renderer has to be built here —
+      # electron-builder packages `dist/**/*`, and without this step every
+      # installer would ship an application with no interface. The packed-build
+      # test on Windows is what caught that; the other platforms merely produced
+      # a smaller, empty app.
+      - name: Build the renderer
+        run: npm run build
+
       - name: Build installers
         shell: bash
         # Signing is optional: provide CSC_LINK and CSC_KEY_PASSWORD as secrets
@@ -63,11 +71,14 @@ jobs:
           fi
           npx electron-builder ${{ matrix.target }} "${args[@]}"
 
-      - name: Verify the installers that will be published
+      # The same verification CI runs, against the artifacts that are about to be
+      # published rather than against a local build.
+      - name: Verify the packed build
         if: runner.os == 'Windows'
-        run: |
-          npm run verify:packed
-          npm run verify:update
+        run: npm run verify:packed
+      - name: Verify the update channel
+        if: runner.os == 'Windows'
+        run: npm run verify:update
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
