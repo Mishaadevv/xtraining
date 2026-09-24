@@ -136,7 +136,19 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      # A release has to be exactly what this run built. Pushing a tag again used to
+      # pile the new files on top of whatever the previous attempt had already
+      # uploaded — which is how a release ended up carrying 122 assets, most of them
+      # unpacked application files from a failed attempt. The old release goes first,
+      # and only after every platform has built successfully.
+      - name: Remove the release this run replaces
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "$GITHUB_REF_NAME" --yes || true
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
           generate_release_notes: true
+          fail_on_unmatched_files: true
